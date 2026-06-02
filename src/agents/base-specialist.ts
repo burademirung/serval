@@ -43,20 +43,21 @@ async function connectServal(env: Env, agent: Agent<Env>) {
 
   const mcp: MCPClientManager = agent.mcp;
 
-  // listTools() returns (Tool & { serverId: string })[] — synchronous
+  // listTools() returns (Tool & { serverId: string })[] — synchronous.
+  // NOTE: `serverId` is the client's generated CONNECTION id (e.g. "bqNJkqhK"),
+  // NOT the "serval" name we passed to addMcpServer. We only connect one server,
+  // so adopt the connection id the tools actually carry and use it for callTool.
   const rawTools = mcp.listTools();
+  const connId = rawTools[0]?.serverId ?? serverId;
 
-  // Map to our internal McpToolDef shape; keep only tools from this server
-  const tools: McpToolDef[] = rawTools
-    .filter((t) => t.serverId === serverId)
-    .map((t) => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: "object", properties: {} },
-    }));
+  const tools: McpToolDef[] = rawTools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: "object", properties: {} },
+  }));
 
   const callTool = async (name: string, input: Record<string, unknown>) => {
-    const res = await mcp.callTool({ name, arguments: input, serverId } as any);
+    const res = await mcp.callTool({ name, arguments: input, serverId: connId } as any);
     // res.content is the MCP content array; extract text blocks
     const content = (res as any)?.content ?? [];
     const text = (content as Array<{ type: string; text?: string }>)
