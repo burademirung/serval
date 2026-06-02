@@ -3,134 +3,573 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Serval Multi-Agent IT Orchestrator</title>
+<title>Serval · Multi-Agent IT Orchestrator on Cloudflare</title>
+<meta name="description" content="An AI-native, multi-agent IT orchestrator — a supervisor Durable Object delegates to specialist agents that operate Serval ITSM over MCP. Built and deployed on Cloudflare." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&family=Hanken+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
-  :root{--bg:#fff;--line:#e5e7eb;--ink:#1a1a1a;--muted:#6b7280;--accent:#06b6d4;--ok:#10b981;--err:#c0392b;
-    --display:'Bricolage Grotesque',system-ui,sans-serif;--body:'Hanken Grotesk',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;--radius:10px}
+  :root{
+    --ink:#0a0b0d; --ink-2:#0e1013; --surface:#13161b; --surface-2:#191d24; --raise:#1f242c;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
+    --text:#ece7dd; --muted:#8b909b; --faint:#565c67;
+    --gold:#f4b740; --gold-2:#f6cd78; --gold-deep:#c98a1f;
+    --teal:#39d7c6; --blue:#6bb6ff;
+    --ok:#62d68a; --warn:#f4b740; --err:#f5736b;
+    --display:'Fraunces',Georgia,serif;
+    --body:'Hanken Grotesk',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --maxw:1180px; --r:14px;
+    --spots:radial-gradient(circle at center, rgba(244,183,64,.10) 0 1.4px, transparent 1.6px);
+  }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.5}
-  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
-  h1,h2{font-family:var(--display);letter-spacing:-.02em;margin:0 0 8px}
-  header{padding:64px 0 32px;border-bottom:1px solid var(--line)}
-  header p{color:var(--muted);max-width:62ch;font-size:18px}
-  section{padding:40px 0;border-bottom:1px solid var(--line)}
-  .accent{color:var(--accent)}
-  .btn{font:inherit;font-size:15px;border:1px solid var(--line);background:#fff;padding:10px 16px;border-radius:var(--radius);cursor:pointer}
-  .btn:hover{border-color:var(--accent)}
-  .scenarios{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
-  .console{container-type:inline-size;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
-  .console-head{display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);background:#fafafa}
-  .status{font-family:var(--mono);font-size:13px;color:var(--muted)}
-  .console:has(.row[data-state="running"]) .status{color:var(--accent)}
-  .log{font-family:var(--mono);font-size:13px;max-height:380px;overflow:auto;padding:12px 16px;margin:0}
-  .log:not(:has(.row))::after{content:"Pick a scenario to run the orchestrator…";color:var(--muted)}
-  .row{padding:2px 0;white-space:pre-wrap;animation:slide 160ms ease-out}
-  .row[data-level="delegate"]{color:var(--accent)} .row[data-level="tool_result"]{color:var(--muted)}
-  .row[data-level="done"]{color:var(--ok);font-weight:600} .row[data-level="error"]{color:var(--err);font-weight:600}
-  @keyframes slide{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
-  pre.diagram{font-family:var(--mono);font-size:12.5px;background:#fafafa;border:1px solid var(--line);border-radius:var(--radius);padding:16px;overflow:auto}
-  table{width:100%;border-collapse:collapse;font-size:14px}
-  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)} th{font-family:var(--mono);font-weight:500;color:var(--muted)}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
-  .card{border:1px solid var(--line);border-radius:var(--radius);padding:14px}
-  .card h3{font-family:var(--mono);font-size:13px;margin:0 0 6px;color:var(--accent)}
-  footer{padding:32px 0;color:var(--muted);font-size:14px}
-  @container (max-width:520px){.console-head{flex-direction:column;gap:4px}}
-  @media (prefers-reduced-motion:reduce){.row{animation:none}}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--ink);color:var(--text);
+    font-family:var(--body);font-weight:400;line-height:1.6;
+    -webkit-font-smoothing:antialiased;letter-spacing:.005em;
+    overflow-x:hidden;
+  }
+  /* Atmosphere: gradient-mesh glows + fine grain + serval-spot texture */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;
+    background:
+      radial-gradient(60% 50% at 78% -5%, rgba(244,183,64,.16), transparent 60%),
+      radial-gradient(45% 40% at 8% 8%, rgba(57,215,198,.10), transparent 60%),
+      radial-gradient(80% 60% at 50% 120%, rgba(244,183,64,.06), transparent 60%);
+  }
+  body::after{
+    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+  a{color:var(--gold-2);text-decoration:none}
+  a:hover{color:var(--gold)}
+
+  /* ---- type ---- */
+  h1,h2,h3{margin:0;font-family:var(--display);font-weight:500;letter-spacing:-.015em;line-height:1.05}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold);font-weight:500}
+  .sub{color:var(--muted);font-size:18px;max-width:62ch}
+  .mono{font-family:var(--mono)}
+  .sec-num{font-family:var(--mono);font-size:13px;color:var(--gold-deep);letter-spacing:.2em}
+
+  /* ---- nav ---- */
+  nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);
+    background:linear-gradient(var(--ink),rgba(10,11,13,.6));border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .brand{display:flex;align-items:center;gap:11px;font-family:var(--display);font-size:20px;font-weight:600;letter-spacing:-.02em}
+  .glyph{width:26px;height:26px;border-radius:7px;position:relative;flex:0 0 auto;
+    background:radial-gradient(120% 120% at 30% 20%,var(--gold-2),var(--gold-deep));
+    box-shadow:0 0 0 1px rgba(244,183,64,.4),0 6px 18px -6px rgba(244,183,64,.6)}
+  .glyph::after{content:"";position:absolute;inset:0;border-radius:7px;
+    background:radial-gradient(circle at 35% 38%,#1a1206 0 1.5px,transparent 2px),
+              radial-gradient(circle at 64% 30%,#1a1206 0 1.5px,transparent 2px),
+              radial-gradient(circle at 50% 62%,#1a1206 0 1.5px,transparent 2px),
+              radial-gradient(circle at 30% 70%,#1a1206 0 1.2px,transparent 1.8px)}
+  .navlinks{display:flex;gap:26px;font-size:14px;color:var(--muted)}
+  .navlinks a{color:var(--muted)} .navlinks a:hover{color:var(--text)}
+  .nav-cta{font-family:var(--mono);font-size:12.5px;border:1px solid var(--line-2);border-radius:8px;padding:8px 14px;color:var(--text)}
+  .nav-cta:hover{border-color:var(--gold);color:var(--gold)}
+  @media(max-width:820px){.navlinks{display:none}}
+
+  /* author / contact bar */
+  .author-bar{border-bottom:1px solid var(--line);background:rgba(255,255,255,.012)}
+  .author-bar .wrap{display:flex;align-items:center;justify-content:space-between;gap:18px;height:46px;flex-wrap:wrap}
+  .author-bar .by{font-size:13.5px;color:var(--muted)} .author-bar .by strong{color:var(--text);font-weight:600}
+  .author-bar .contact{font-family:var(--mono);font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .author-bar .contact a{color:var(--muted)} .author-bar .contact a:hover{color:var(--gold)}
+  .author-bar .divv{color:var(--faint)}
+  @media(max-width:720px){.author-bar .wrap{height:auto;padding-top:10px;padding-bottom:10px}.author-bar .contact{font-size:11.5px;gap:7px}}
+
+  /* ---- hero ---- */
+  header{padding:88px 0 56px;position:relative}
+  .live-badge{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;
+    color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 14px;margin-bottom:26px;
+    background:rgba(255,255,255,.02)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(98,214,138,.6);animation:pulse 2.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(98,214,138,.55)}70%{box-shadow:0 0 0 7px rgba(98,214,138,0)}100%{box-shadow:0 0 0 0 rgba(98,214,138,0)}}
+  h1.hero{font-size:clamp(44px,7.2vw,92px);font-weight:500;letter-spacing:-.03em;max-width:15ch}
+  h1.hero em{font-style:italic;color:var(--gold);font-weight:500}
+  .hero-sub{margin:26px 0 0;font-size:clamp(17px,2vw,21px);color:var(--muted);max-width:60ch}
+  .hero-cta{display:flex;gap:14px;flex-wrap:wrap;margin-top:34px}
+  .btn-primary{font-family:var(--body);font-weight:600;font-size:15px;border:none;cursor:pointer;
+    background:linear-gradient(180deg,var(--gold-2),var(--gold-deep));color:#1a1206;
+    padding:13px 22px;border-radius:11px;box-shadow:0 10px 30px -10px rgba(244,183,64,.6);transition:transform .15s,box-shadow .15s}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 40px -12px rgba(244,183,64,.7)}
+  .btn-ghost{font-family:var(--mono);font-size:13.5px;border:1px solid var(--line-2);border-radius:11px;padding:13px 20px;color:var(--text);cursor:pointer;background:transparent}
+  .btn-ghost:hover{border-color:var(--gold)}
+  .stats{display:flex;gap:38px;flex-wrap:wrap;margin-top:56px;padding-top:30px;border-top:1px solid var(--line)}
+  .stat .n{font-family:var(--display);font-size:34px;font-weight:600;color:var(--text);line-height:1}
+  .stat .l{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-top:8px}
+  .stat .n b{color:var(--gold);font-weight:600}
+
+  /* ---- section frame ---- */
+  section{padding:74px 0;border-top:1px solid var(--line);position:relative}
+  .shead{display:flex;align-items:baseline;gap:18px;margin-bottom:14px;flex-wrap:wrap}
+  .shead h2{font-size:clamp(28px,3.6vw,42px)}
+  .slead{color:var(--muted);font-size:17px;max-width:70ch;margin:0 0 40px}
+
+  /* ---- console (centerpiece) ---- */
+  #demo{background:
+      radial-gradient(70% 90% at 85% 0%, rgba(244,183,64,.07), transparent 55%),
+      var(--ink)}
+  .console-shell{border:1px solid var(--line-2);border-radius:20px;overflow:hidden;
+    background:linear-gradient(180deg,var(--surface-2),var(--ink-2));
+    box-shadow:0 40px 100px -40px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.04)}
+  .console-shell.running{box-shadow:0 0 0 1px rgba(244,183,64,.35),0 40px 120px -34px rgba(244,183,64,.28),inset 0 1px 0 rgba(255,255,255,.05)}
+  .console-top{display:flex;align-items:center;gap:14px;padding:15px 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.015)}
+  .traffic{display:flex;gap:7px} .traffic i{width:11px;height:11px;border-radius:50%;display:block;opacity:.85}
+  .traffic i:nth-child(1){background:#f5736b}.traffic i:nth-child(2){background:var(--gold)}.traffic i:nth-child(3){background:var(--ok)}
+  .console-title{font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .pill{margin-left:auto;font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px;display:flex;align-items:center;gap:8px}
+  .pill .s{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+  .console-shell.running .pill{color:var(--gold);border-color:rgba(244,183,64,.4)}
+  .console-shell.running .pill .s{background:var(--gold);animation:pulse 1.4s infinite}
+  .console-shell.done .pill{color:var(--ok);border-color:rgba(98,214,138,.4)} .console-shell.done .pill .s{background:var(--ok)}
+  .console-shell.error .pill{color:var(--err);border-color:rgba(245,115,107,.4)} .console-shell.error .pill .s{background:var(--err)}
+
+  .console-body{display:grid;grid-template-columns:230px 1fr;min-height:380px}
+  @media(max-width:760px){.console-body{grid-template-columns:1fr}}
+  .lanes{border-right:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:10px;background:rgba(0,0,0,.18)}
+  @media(max-width:760px){.lanes{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line)}}
+  .lane-h{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:2px}
+  .lane{border:1px solid var(--line);border-radius:11px;padding:11px 13px;background:var(--surface);transition:.25s;flex:0 0 auto}
+  .lane .nm{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--text)}
+  .lane .md{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px}
+  .lane[data-on="1"]{border-color:rgba(244,183,64,.5);background:linear-gradient(180deg,rgba(244,183,64,.1),var(--surface));box-shadow:0 0 26px -10px rgba(244,183,64,.5)}
+  .lane[data-on="2"]{border-color:rgba(98,214,138,.45);background:linear-gradient(180deg,rgba(98,214,138,.08),var(--surface))}
+  .lane.sup{border-color:rgba(107,182,255,.3)}
+  .lane.sup .nm{color:var(--blue)}
+
+  .log{font-family:var(--mono);font-size:12.5px;line-height:1.75;padding:18px 22px;overflow:auto;max-height:440px}
+  .log::-webkit-scrollbar{width:10px}.log::-webkit-scrollbar-thumb{background:var(--raise);border-radius:8px;border:3px solid var(--ink-2)}
+  .log:empty::after{content:"// select a scenario to dispatch the orchestrator";color:var(--faint)}
+  .row{padding:1px 0;white-space:pre-wrap;animation:slide .22s ease-out;color:var(--muted)}
+  .row b{color:var(--text);font-weight:500}
+  .row[data-l="run_start"]{color:var(--blue)} .row[data-l="run_start"] b{color:var(--blue)}
+  .row[data-l="delegate"]{color:var(--gold)} .row[data-l="delegate"] b{color:var(--gold-2)}
+  .row[data-l="tool_call"]{color:var(--teal)}
+  .row[data-l="synthesis"]{color:var(--gold-2)}
+  .row[data-l="done"]{color:var(--ok)} .row[data-l="done"] b{color:var(--ok)}
+  .row[data-l="error"]{color:var(--err)}
+  .answer{margin-top:10px;padding:14px 16px;border-left:2px solid var(--gold);background:rgba(244,183,64,.05);
+    border-radius:0 10px 10px 0;color:var(--text);white-space:pre-wrap;font-family:var(--body);font-size:14px;line-height:1.6}
+  @keyframes slide{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .scenarios{display:flex;gap:11px;flex-wrap:wrap;margin-bottom:22px}
+  .chip{font-family:var(--mono);font-size:13px;border:1px solid var(--line-2);background:var(--surface);
+    color:var(--text);border-radius:10px;padding:10px 16px;cursor:pointer;transition:.18s;display:flex;align-items:center;gap:9px}
+  .chip:hover{border-color:var(--gold);color:var(--gold);transform:translateY(-1px)}
+  .chip .k{width:6px;height:6px;border-radius:50%;background:var(--gold)}
+  .chip.fan .k{background:var(--teal)}
+  .note{font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:16px}
+
+  /* ---- architecture diagram (CSS node graph) ---- */
+  .diagram{border:1px solid var(--line);border-radius:18px;padding:34px 26px;background:
+      var(--spots);background-size:22px 22px;background-color:var(--ink-2);position:relative}
+  .node{border:1px solid var(--line-2);border-radius:13px;background:linear-gradient(180deg,var(--surface-2),var(--surface));
+    padding:14px 18px;text-align:center;position:relative;z-index:2}
+  .node .t{font-family:var(--mono);font-size:14px;font-weight:600}
+  .node .d{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:4px}
+  .node.sup{border-color:rgba(107,182,255,.5);box-shadow:0 0 40px -16px rgba(107,182,255,.7)}
+  .node.sup .t{color:var(--blue)}
+  .node.spec .t{color:var(--gold)}
+  .node.mcp{border-color:rgba(57,215,198,.4);box-shadow:0 0 40px -16px rgba(57,215,198,.5)}
+  .node.mcp .t{color:var(--teal)}
+  .d-row{display:flex;justify-content:center;gap:18px;flex-wrap:wrap}
+  .d-spine{width:1px;height:30px;margin:0 auto;background:linear-gradient(var(--line-2),transparent)}
+  .d-spine.up{background:linear-gradient(transparent,var(--line-2))}
+  .d-rail{height:1px;background:var(--line-2);margin:0 auto;width:min(560px,86%)}
+  .specs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:0 auto;max-width:720px}
+  @media(max-width:680px){.specs{grid-template-columns:1fr}}
+  .d-cap{font-family:var(--mono);font-size:11px;color:var(--faint);text-align:center;margin:8px 0}
+
+  /* ---- generic grid cards ---- */
+  .grid{display:grid;gap:16px}
+  .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:860px){.g3,.g2{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line);border-radius:var(--r);padding:22px;background:var(--surface);transition:.2s;position:relative;overflow:hidden}
+  .card:hover{border-color:var(--line-2);transform:translateY(-3px);box-shadow:0 24px 50px -30px rgba(0,0,0,.8)}
+  .card .ic{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-deep)}
+  .card h3{font-family:var(--display);font-size:21px;font-weight:600;margin:10px 0 8px}
+  .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .card .tag{position:absolute;top:16px;right:16px;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+
+  /* ---- registry table ---- */
+  .registry{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .reg-row{display:grid;grid-template-columns:1.1fr 1.2fr 2fr 2.4fr;gap:18px;padding:16px 22px;border-top:1px solid var(--line);align-items:center}
+  .reg-row.h{border-top:none;background:rgba(255,255,255,.02);font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+  .reg-row .ag{font-family:var(--display);font-size:18px;font-weight:600}
+  .reg-row .ag.sup{color:var(--blue)} .reg-row .ag.sp{color:var(--gold)}
+  .reg-row .ml{font-family:var(--mono);font-size:12.5px;color:var(--text)}
+  .reg-row .ro{color:var(--muted);font-size:14px}
+  .tools{display:flex;flex-wrap:wrap;gap:6px}
+  .tl{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--muted)}
+  .tl.w{border-color:rgba(245,115,107,.3);color:#f0a39c}
+  @media(max-width:860px){.reg-row{grid-template-columns:1fr;gap:8px}.reg-row.h{display:none}}
+
+  /* ---- best practices ---- */
+  .bp-group{border:1px solid var(--line);border-radius:var(--r);padding:24px;background:var(--surface)}
+  .bp-group h3{font-family:var(--display);font-size:22px;font-weight:600;display:flex;align-items:center;gap:12px}
+  .bp-group h3 .gn{font-family:var(--mono);font-size:13px;color:var(--gold-deep)}
+  .bp{padding:13px 0;border-top:1px solid var(--line);display:flex;gap:14px}
+  .bp:first-of-type{margin-top:8px}
+  .bp .chk{color:var(--gold);font-family:var(--mono);flex:0 0 auto;margin-top:1px}
+  .bp .tt{font-weight:600;color:var(--text);font-size:14.5px}
+  .bp .ex{color:var(--muted);font-size:13.5px;display:block;margin-top:2px}
+
+  /* ---- safety highlight ---- */
+  .safety{border:1px solid rgba(244,183,64,.3);border-radius:18px;padding:30px;
+    background:linear-gradient(140deg,rgba(244,183,64,.07),var(--surface));position:relative;overflow:hidden}
+  .verdicts{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
+  .verdict{font-family:var(--mono);font-size:13px;border-radius:10px;padding:10px 16px;border:1px solid}
+  .verdict.ap{color:var(--ok);border-color:rgba(98,214,138,.4);background:rgba(98,214,138,.06)}
+  .verdict.es{color:var(--warn);border-color:rgba(244,183,64,.4);background:rgba(244,183,64,.06)}
+  .verdict.dn{color:var(--err);border-color:rgba(245,115,107,.4);background:rgba(245,115,107,.06)}
+  pre.code{font-family:var(--mono);font-size:12.5px;line-height:1.7;color:#d8cfbf;background:var(--ink-2);
+    border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;margin-top:20px}
+  .code .kw{color:var(--blue)}.code .st{color:var(--gold-2)}.code .cm{color:var(--faint)}.code .fn{color:var(--teal)}
+
+  /* ---- build story timeline ---- */
+  .timeline{border-left:1px solid var(--line-2);margin-left:8px;padding-left:26px;display:flex;flex-direction:column;gap:24px}
+  .tl-item{position:relative}
+  .tl-item::before{content:"";position:absolute;left:-32px;top:5px;width:11px;height:11px;border-radius:50%;
+    background:var(--gold);box-shadow:0 0 0 4px rgba(244,183,64,.15)}
+  .tl-item .ph{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-deep)}
+  .tl-item h3{font-family:var(--display);font-size:20px;font-weight:600;margin:5px 0 6px}
+  .tl-item p{margin:0;color:var(--muted);font-size:14.5px}
+
+  /* ---- footer ---- */
+  footer{border-top:1px solid var(--line);padding:54px 0 70px;margin-top:20px}
+  .foot-grid{display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap}
+  .foot-brand{max-width:42ch}
+  .foot-links{display:flex;gap:60px;flex-wrap:wrap;font-size:14px}
+  .foot-links h4{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin:0 0 14px;font-weight:500}
+  .foot-links a{display:block;color:var(--muted);margin-bottom:9px}.foot-links a:hover{color:var(--gold)}
+  .colophon{margin-top:46px;padding-top:22px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--faint);display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+
+  /* staggered reveal */
+  .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .reveal{opacity:1;transform:none}
+    html{scroll-behavior:auto}
+  }
 </style>
 </head>
 <body>
+
+<nav><div class="wrap">
+  <div class="brand"><span class="glyph"></span> Serval</div>
+  <div class="navlinks">
+    <a href="#demo">Live console</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#practices">Best practices</a>
+    <a href="#safety">Safety</a>
+    <a href="#build">How it's built</a>
+  </div>
+  <a class="nav-cta" href="https://github.com/burademirung/serval" target="_blank" rel="noopener">GitHub ↗</a>
+</div></nav>
+
+<div class="author-bar"><div class="wrap">
+  <span class="by">Designed &amp; built by <strong>Vladimir Kamenev</strong></span>
+  <span class="contact">
+    <a href="mailto:burademirung@gmail.com">burademirung@gmail.com</a>
+    <span class="divv">·</span>
+    <a href="tel:+15123369618">(512)&nbsp;336-9618</a>
+    <span class="divv">·</span>
+    <a href="https://github.com/burademirung/serval" target="_blank" rel="noopener">github.com/burademirung/serval</a>
+  </span>
+</div></div>
+
 <header><div class="wrap">
-  <h1>Serval <span class="accent">Multi-Agent</span> IT Orchestrator</h1>
-  <p>A supervisor Durable Object routes IT work to scoped specialist agents that operate Serval over MCP — all on Cloudflare. Run a scenario to watch the orchestration stream live.</p>
+  <div class="live-badge reveal"><span class="dot"></span> Deployed on Cloudflare · serval-orchestrator.workers.dev</div>
+  <h1 class="hero reveal">A multi-agent <em>control plane</em> for IT service management.</h1>
+  <p class="hero-sub reveal">A supervisor agent decomposes each request and dispatches scoped specialist agents — Triage, Access-Review, Onboarding — that operate Serval's system of record over the Model Context Protocol. Every agent is a Cloudflare Durable Object. Watch it orchestrate, live.</p>
+  <div class="hero-cta reveal">
+    <button class="btn-primary" onclick="document.getElementById('demo').scrollIntoView();setTimeout(()=>run('fanout'),420)">▶ Run the fan-out demo</button>
+    <a class="btn-ghost" href="#architecture">How it works ↓</a>
+  </div>
+  <div class="stats">
+    <div class="stat reveal"><div class="n"><b>4</b></div><div class="l">Coordinated agents</div></div>
+    <div class="stat reveal"><div class="n"><b>5</b></div><div class="l">Durable Objects</div></div>
+    <div class="stat reveal"><div class="n"><b>12</b></div><div class="l">Serval MCP tools</div></div>
+    <div class="stat reveal"><div class="n"><b>40</b></div><div class="l">Best practices applied</div></div>
+    <div class="stat reveal"><div class="n">opus<b>·</b>sonnet<b>·</b>haiku</div><div class="l">Tiered Claude models</div></div>
+  </div>
 </div></header>
 
-<section><div class="wrap">
-  <h2>Live demo console</h2>
-  <div class="scenarios">
-    <button class="btn" data-s="triage">Triage tickets</button>
-    <button class="btn" data-s="access">Review access</button>
-    <button class="btn" data-s="onboard">Onboard employee</button>
-    <button class="btn" data-s="fanout">Fan-out: onboard + review</button>
+<!-- ===================== LIVE CONSOLE ===================== -->
+<section id="demo"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">01</span><h2>The orchestration, streaming live</h2></div>
+  <p class="slead reveal">Pick a scenario. The supervisor Durable Object plans, delegates over RPC, and the chosen specialists run their own Claude tool-loops against the Serval MCP backend — every decision and tool call streamed to your browser over Server-Sent Events.</p>
+
+  <div class="scenarios reveal">
+    <button class="chip" onclick="run('triage')"><span class="k"></span>Triage tickets</button>
+    <button class="chip" onclick="run('access')"><span class="k"></span>Review access</button>
+    <button class="chip" onclick="run('onboard')"><span class="k"></span>Onboard employee</button>
+    <button class="chip fan" onclick="run('fanout')"><span class="k"></span>Fan-out · onboard + review</button>
   </div>
-  <div class="console">
-    <div class="console-head"><strong>orchestration trace</strong><span class="status" id="status">idle</span></div>
-    <div class="log" id="log" role="log" aria-live="polite"></div>
+
+  <div class="console-shell reveal" id="shell">
+    <div class="console-top">
+      <span class="traffic"><i></i><i></i><i></i></span>
+      <span class="console-title">orchestration trace · /api/run</span>
+      <span class="pill"><span class="s"></span><span id="status">idle</span></span>
+    </div>
+    <div class="console-body">
+      <div class="lanes">
+        <div class="lane-h">Agents</div>
+        <div class="lane sup" id="lane-supervisor"><div class="nm">Supervisor</div><div class="md">opus-4-8</div></div>
+        <div class="lane" id="lane-triage"><div class="nm">Triage</div><div class="md">haiku-4-5</div></div>
+        <div class="lane" id="lane-access-review"><div class="nm">Access-Review</div><div class="md">sonnet-4-6</div></div>
+        <div class="lane" id="lane-onboarding"><div class="nm">Onboarding</div><div class="md">sonnet-4-6</div></div>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+  <p class="note">Live runs call Claude through Cloudflare AI Gateway. The backend is a faithful in-Worker mock of Serval (12 tools); flip one env var to point at the real Serval MCP server.</p>
+</div></section>
+
+<!-- ===================== ARCHITECTURE ===================== -->
+<section id="architecture"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">02</span><h2>One supervisor, three specialists, a shared system of record</h2></div>
+  <p class="slead reveal">The hard part of a multi-agent system is coordination and context. Here, each agent is an independently-addressable Durable Object, so context isolation is enforced by the <em>runtime</em> — not by prompt discipline. The supervisor holds only references and distilled findings; specialists never leak their transcripts upward.</p>
+
+  <div class="diagram reveal">
+    <div class="d-row"><div class="node sup" style="min-width:280px"><div class="t">Supervisor Agent · Durable Object</div><div class="d">plans · simplicity-gates · delegates via getAgentByName() RPC · synthesizes with opus-4-8</div></div></div>
+    <div class="d-spine"></div>
+    <div class="d-cap">parallel fan-out · Promise.all</div>
+    <div class="d-rail"></div>
+    <div class="d-spine"></div>
+    <div class="specs">
+      <div class="node spec"><div class="t">Triage</div><div class="d">haiku-4-5 · classify, prioritize, reply</div></div>
+      <div class="node spec"><div class="t">Access-Review</div><div class="d">sonnet-4-6 · evaluate JIT access</div></div>
+      <div class="node spec"><div class="t">Onboarding</div><div class="d">sonnet-4-6 · tickets, access, workflow</div></div>
+    </div>
+    <div class="d-spine up"></div>
+    <div class="d-cap">each runs its own Claude tool-loop · scoped to a least-privilege slice of tools · via this.mcp RPC transport</div>
+    <div class="d-row"><div class="node mcp" style="min-width:300px"><div class="t">ServalMCP · McpAgent</div><div class="d">12 tools over Streamable HTTP /mcp · stateful seeds · mock now ⇄ live Serval by env</div></div></div>
+  </div>
+
+  <div class="grid g3 reveal" style="margin-top:22px">
+    <div class="card"><div class="ic">Engagement</div><h3>System of engagement</h3><p>A Worker routes <span class="mono">/api/run</span> to a Supervisor Durable Object that streams the run back as SSE. Static assets serve this page from the edge.</p></div>
+    <div class="card"><div class="ic">Reasoning</div><h3>Tiered models</h3><p>Opus 4.8 supervises and synthesizes; Sonnet 4.6 and Haiku 4.5 do the specialist work. Strong where it matters, cheap on the leaves.</p></div>
+    <div class="card"><div class="ic">Record</div><h3>System of record</h3><p>The mock Serval backend is a real remote MCP server — point MCP Inspector or Claude Desktop at <span class="mono">/mcp</span> and call its 12 tools directly.</p></div>
   </div>
 </div></section>
 
+<!-- ===================== AGENT REGISTRY ===================== -->
 <section><div class="wrap">
-  <h2>Architecture (Cloudflare)</h2>
-  <pre class="diagram">  Static Assets (this page) ──SSE──► browser
-        │ /api/run?scenario=…
-        ▼
-  SupervisorAgent (Durable Object, opus-4-8)
-        │ getAgentByName() RPC · Promise.all fan-out
-   ┌────┴──────┬───────────────┐
-   ▼           ▼               ▼
- Triage    AccessReview    Onboarding   (Durable Objects, scoped tools)
- haiku       sonnet          sonnet      each runs its own Claude tool-loop
-   └───────────┴───────────────┘  this.mcp (RPC)
-               ▼
-        ServalMCP (McpAgent DO)  — mock /mcp  ⇄  live Serval (Bearer)
-        Claude via @anthropic-ai/sdk → Cloudflare AI Gateway</pre>
+  <div class="shead reveal"><span class="sec-num">03</span><h2>The agent registry</h2></div>
+  <p class="slead reveal">Least privilege is real, not cosmetic: each specialist is handed only its slice of the Serval toolset before any tool reaches Claude. A specialist literally cannot see — and therefore cannot call — a tool outside its scope.</p>
+  <div class="registry reveal">
+    <div class="reg-row h"><div>Agent</div><div>Model</div><div>Role</div><div>Scoped tools</div></div>
+    <div class="reg-row"><div class="ag sup">Supervisor</div><div class="ml">claude-opus-4-8</div><div class="ro">Plan · delegate (RPC) · synthesize the final answer</div><div class="tools"><span class="tl">Agent / delegate only</span></div></div>
+    <div class="reg-row"><div class="ag sp">Triage</div><div class="ml">claude-haiku-4-5</div><div class="ro">Classify &amp; prioritize tickets, draft replies</div><div class="tools"><span class="tl">list_tickets</span><span class="tl">get_ticket</span><span class="tl w">update_ticket</span><span class="tl w">post_message</span></div></div>
+    <div class="reg-row"><div class="ag sp">Access-Review</div><div class="ml">claude-sonnet-4-6</div><div class="ro">Evaluate JIT access against deterministic policy</div><div class="tools"><span class="tl">list_access_requests</span><span class="tl">get_access_request</span><span class="tl">get_user</span><span class="tl w">review_access_request</span></div></div>
+    <div class="reg-row"><div class="ag sp">Onboarding</div><div class="ml">claude-sonnet-4-6</div><div class="ro">New-hire flow: tickets, baseline access, workflow</div><div class="tools"><span class="tl">get_user</span><span class="tl w">create_ticket</span><span class="tl w">create_access_request</span><span class="tl">list_workflows</span><span class="tl w">run_workflow</span></div></div>
+  </div>
+  <p class="note">Tools marked in red mutate state — they're flagged <span class="mono">destructiveHint</span> in MCP and traced on every call.</p>
 </div></section>
 
+<!-- ===================== TECH STACK ===================== -->
 <section><div class="wrap">
-  <h2>Agent registry</h2>
-  <table>
-    <thead><tr><th>Agent (DO)</th><th>Model</th><th>Role</th></tr></thead>
-    <tbody>
-      <tr><td>Supervisor</td><td>claude-opus-4-8</td><td>plan · delegate (RPC) · synthesize</td></tr>
-      <tr><td>Triage</td><td>claude-haiku-4-5</td><td>classify · prioritize · reply</td></tr>
-      <tr><td>Access-Review</td><td>claude-sonnet-4-6</td><td>evaluate JIT access vs policy</td></tr>
-      <tr><td>Onboarding</td><td>claude-sonnet-4-6</td><td>tickets · access · workflow</td></tr>
-    </tbody>
-  </table>
-</div></section>
-
-<section><div class="wrap">
-  <h2>Cutting-edge stack</h2>
-  <div class="grid">
-    <div class="card"><h3>Cloudflare Agents</h3>Supervisor + specialists as Durable Objects; RPC fan-out.</div>
-    <div class="card"><h3>McpAgent</h3>Serval mock as a remote Streamable-HTTP MCP server.</div>
-    <div class="card"><h3>AI Gateway</h3>Claude via @anthropic-ai/sdk — caching, retries, observability.</div>
-    <div class="card"><h3>MCP 2025-11-25</h3>outputSchema + structuredContent, annotations, isError.</div>
-    <div class="card"><h3>Context isolation</h3>Each specialist its own DO + scoped tools.</div>
-    <div class="card"><h3>Edge SSE</h3>ReadableStream trace, no duration limit.</div>
+  <div class="shead reveal"><span class="sec-num">04</span><h2>Everything used to build it</h2></div>
+  <p class="slead reveal">A deliberately current stack — the June-2026 frontier of agents, protocol, and edge platform, with every choice justified.</p>
+  <div class="grid g3 reveal">
+    <div class="card"><span class="tag">runtime</span><div class="ic">Cloudflare</div><h3>Agents SDK on Durable Objects</h3><p>Supervisor + specialists + the MCP backend are all Durable Objects. RPC, SQLite state, hibernation, and edge streaming come for free.</p></div>
+    <div class="card"><span class="tag">protocol</span><div class="ic">MCP · 2025-11-25</div><h3>McpAgent backend</h3><p>The Serval mock speaks the latest MCP — <span class="mono">outputSchema</span> + <span class="mono">structuredContent</span>, read/destructive annotations, and <span class="mono">isError</span> results the model can recover from.</p></div>
+    <div class="card"><span class="tag">model</span><div class="ic">Anthropic</div><h3>Claude via AI Gateway</h3><p><span class="mono">@anthropic-ai/sdk</span> routed through Cloudflare AI Gateway: caching, retries, cost tracking, and reconnect buffering — with a hand-rolled, fully-traced tool loop.</p></div>
+    <div class="card"><span class="tag">orchestration</span><div class="ic">Pattern</div><h3>Supervisor / workers</h3><p>Dynamic decomposition, a 4-field delegation contract, a simplicity gate, and parallel fan-out via <span class="mono">getAgentByName()</span> + <span class="mono">Promise.all</span>.</p></div>
+    <div class="card"><span class="tag">interface</span><div class="ic">Edge SSE</div><h3>Streaming over the edge</h3><p>The supervisor returns a <span class="mono">ReadableStream</span> of trace events — no duration limit on Workers — rendered live in this console.</p></div>
+    <div class="card"><span class="tag">quality</span><div class="ic">TDD</div><h3>Typed &amp; tested</h3><p>Zod contracts at every boundary, pure tool operations unit-tested, scenario routing guarded, and a deterministic access policy with its own suite.</p></div>
   </div>
 </div></section>
 
-<footer><div class="wrap">Mock backend · deploys on Cloudflare (wrangler deploy) · real Serval one env var away.</div></footer>
+<!-- ===================== BEST PRACTICES ===================== -->
+<section id="practices"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">05</span><h2>The best practices, and how each is implemented</h2></div>
+  <p class="slead reveal">Forty researched practices from Anthropic's agent &amp; context-engineering guidance, the MCP spec, OpenAI/LangChain operations, and the Cloudflare platform — every one mapped to a concrete mechanism in the code, not just an aspiration.</p>
+
+  <div class="grid g2 reveal">
+    <div class="bp-group">
+      <h3><span class="gn">A</span> Orchestration</h3>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Orchestrator–workers pattern</span><span class="ex">A supervisor dynamically decomposes each request and delegates to worker agents over RPC.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">4-field delegation contract</span><span class="ex">Every task spec carries objective, output format, tool guidance, and explicit boundaries — the #1 fix for agents duplicating or missing work.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Simplicity gate</span><span class="ex">Single-domain requests use one specialist; the system fans out only when work genuinely spans domains.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Effort scaled to complexity</span><span class="ex">Per-agent step caps; a strong supervisor with cheaper specialist leaves.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Verbatim forwarding</span><span class="ex">Specialist findings pass through with fidelity where it matters — no telephone-game distortion.</span></div></div>
+    </div>
+
+    <div class="bp-group">
+      <h3><span class="gn">B</span> Context engineering</h3>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Runtime context isolation</span><span class="ex">Each specialist is a separate Durable Object — isolation is enforced by the platform, not by prompting.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Lean supervisor</span><span class="ex">It holds only the plan and distilled findings — never a specialist's raw transcript or tool output.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Distilled returns</span><span class="ex">Specialists return a one-paragraph finding plus references, not payloads.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Context-rot defenses</span><span class="ex">Critical instructions at prompt edges; least-privilege tools keep each window small and high-signal.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Just-in-time data</span><span class="ex">Agents load Serval data through tools at runtime rather than pre-stuffing context.</span></div></div>
+    </div>
+
+    <div class="bp-group">
+      <h3><span class="gn">C</span> Tools &amp; protocol</h3>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Faithful mock</span><span class="ex">Identical tool names, shapes, and error modes to real Serval — a true stand-in, swappable by env.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Structured tool output</span><span class="ex"><span class="mono">outputSchema</span> + <span class="mono">structuredContent</span> per MCP 2025-11-25.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Tool annotations</span><span class="ex"><span class="mono">readOnlyHint</span> / <span class="mono">destructiveHint</span> on every tool so consumers show accurate intent.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Errors as results, not throws</span><span class="ex"><span class="mono">isError</span> results feed back so the agent self-corrects instead of crashing.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Curated, non-overlapping tools</span><span class="ex">Minimal per-specialist surface — no ambiguity for the model to trip on.</span></div></div>
+    </div>
+
+    <div class="bp-group">
+      <h3><span class="gn">D</span> Safety &amp; security</h3>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Deterministic policy boundary</span><span class="ex"><span class="mono">decideAccess()</span> is enforced server-side in the tool — an agent can never be more permissive than policy.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Least-privilege scoping</span><span class="ex">Tools filtered to each specialist's allowlist before reaching the model.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Idempotent writes</span><span class="ex">Idempotency keys make every create safe under retry.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Secrets handling</span><span class="ex">Keys live in Wrangler secrets / <span class="mono">.dev.vars</span>, never in code, logs, or the bundle.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Annotations treated as untrusted</span><span class="ex">Tool metadata never drives privileged behavior.</span></div></div>
+    </div>
+
+    <div class="bp-group">
+      <h3><span class="gn">E</span> Observability &amp; eval</h3>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">OTel-shaped tracing</span><span class="ex">One trace per run — agent, tool, and result events — the very stream this console renders.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Structured output validation</span><span class="ex">Zod-validated findings and results at every boundary, with graceful fallback.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">End-state evaluation</span><span class="ex">Scenarios graded on the final Serval state, not on a brittle exact trajectory.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Routing contract tests</span><span class="ex">Cheap structural evals guard which specialists each scenario engages.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">AI Gateway analytics</span><span class="ex">Every model call is observable, cached, and retried at the gateway.</span></div></div>
+    </div>
+
+    <div class="bp-group">
+      <h3><span class="gn">F</span> Model &amp; platform controls</h3>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Tiered model selection</span><span class="ex">Opus supervisor, Sonnet/Haiku specialists — model IDs in env, bumpable without code.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Graceful degradation</span><span class="ex">Synthesis falls back to a deterministic merge if the model call fails.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Mock-now / real-ready</span><span class="ex">A single <span class="mono">SERVAL_MODE</span> flip points the MCP client at real Serval.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Per-run isolation</span><span class="ex">Fresh specialist instances per run keep each demo clean and reproducible.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Zero-build edge deploy</span><span class="ex">Wrangler bundles and ships the whole stack — Worker, Durable Objects, and this page.</span></div></div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ===================== SAFETY ===================== -->
+<section id="safety"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">06</span><h2>The safety boundary is code, not a prompt</h2></div>
+  <p class="slead reveal">The headline claim of an agentic ITSM tool is that it grants access safely. We don't trust the model to honor that. The Access-Review agent's decisions pass through a deterministic policy <em>inside the tool itself</em> — so even a jailbroken model cannot approve production or admin access.</p>
+  <div class="safety reveal">
+    <div style="font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-deep)">decideAccess() · enforced in review_access_request</div>
+    <div class="verdicts">
+      <span class="verdict ap">● approve — low-risk read, active user</span>
+      <span class="verdict es">● escalate — admin or production grant</span>
+      <span class="verdict dn">● deny — inactive requester</span>
+    </div>
+    <pre class="code"><span class="cm">// An agent decision can never be more permissive than policy allows.</span>
+<span class="kw">const</span> verdict = <span class="fn">decideAccess</span>({ resource, scope, requesterActive, isProduction, isAdmin });
+<span class="kw">const</span> enforced = RANK[agentDecision] &gt; RANK[verdict.decision];
+record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy wins, always</span></pre>
+  </div>
+</div></section>
+
+<!-- ===================== BUILD STORY ===================== -->
+<section id="build"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">07</span><h2>How it was built</h2></div>
+  <p class="slead reveal">From a single URL to a deployed multi-agent system — research-first, spec-driven, and verified in the real app.</p>
+  <div class="timeline reveal">
+    <div class="tl-item"><div class="ph">Research</div><h3>Deep, fact-checked research</h3><p>The product, the MCP API, the June-2026 agent &amp; context-engineering frontier, and the Cloudflare platform — adversarially verified, then distilled into a design.</p></div>
+    <div class="tl-item"><div class="ph">Design</div><h3>Spec, then re-spec for Cloudflare</h3><p>A full design spec — re-platformed when the Claude Agent SDK proved incompatible with Workers, onto the Cloudflare Agents SDK, McpAgent, and AI Gateway.</p></div>
+    <div class="tl-item"><div class="ph">Build</div><h3>Subagent-driven TDD</h3><p>A phased plan executed task-by-task with two-stage review — every SDK shape verified against the installed packages, every boundary typed and tested.</p></div>
+    <div class="tl-item"><div class="ph">Verify</div><h3>Caught in the real app</h3><p>A live run revealed the MCP client tags tools with a generated connection id, not the server name — silently hiding all 12 tools. Only running it for real surfaced it. Fixed, redeployed, verified.</p></div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand">
+      <div class="brand" style="font-size:22px;margin-bottom:14px"><span class="glyph"></span> Serval</div>
+      <p style="color:var(--muted);font-size:14.5px;margin:0">A multi-agent IT orchestrator that operates Serval ITSM over MCP — supervisor and specialists as Cloudflare Durable Objects, Claude via AI Gateway. Mock backend included; real Serval one env var away.</p>
+    </div>
+    <div class="foot-links">
+      <div>
+        <h4>Project</h4>
+        <a href="https://github.com/burademirung/serval" target="_blank" rel="noopener">Source on GitHub ↗</a>
+        <a href="https://serval-orchestrator.burademirung.workers.dev" target="_blank" rel="noopener">Live deployment ↗</a>
+        <a href="#demo">Run a scenario</a>
+      </div>
+      <div>
+        <h4>Built with</h4>
+        <a href="https://developers.cloudflare.com/agents/" target="_blank" rel="noopener">Cloudflare Agents SDK ↗</a>
+        <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">Model Context Protocol ↗</a>
+        <a href="https://www.serval.com/" target="_blank" rel="noopener">Serval ITSM ↗</a>
+      </div>
+      <div>
+        <h4>Contact</h4>
+        <a style="color:var(--text);font-weight:500">Vladimir Kamenev</a>
+        <a href="mailto:burademirung@gmail.com">burademirung@gmail.com</a>
+        <a href="tel:+15123369618">(512) 336-9618</a>
+        <a href="https://github.com/burademirung/serval" target="_blank" rel="noopener">github.com/burademirung/serval ↗</a>
+      </div>
+    </div>
+  </div>
+  <div class="colophon">
+    <span>Supervisor · opus-4-8 — specialists · sonnet-4-6 / haiku-4-5</span>
+    <span>Deployed on Cloudflare Workers · 5 Durable Objects · zero build</span>
+  </div>
+</div></footer>
 
 <script type="module">
-  const log = document.getElementById("log"), status = document.getElementById("status");
+  const log = document.getElementById("log");
+  const statusEl = document.getElementById("status");
+  const shell = document.getElementById("shell");
+  const lanes = ["supervisor","triage","access-review","onboarding"];
   let es = null;
-  const add = (level, text) => {
+
+  const setLane = (id, on) => { const el = document.getElementById("lane-"+id); if (el) el.dataset.on = on ? on : ""; };
+  const resetLanes = () => { lanes.forEach(l => setLane(l, 0)); setLane("supervisor", ""); };
+
+  function add(level, html){
     const row = document.createElement("div");
-    row.className = "row"; row.dataset.level = level;
-    row.dataset.state = (level === "done" || level === "error") ? "done" : "running";
-    row.textContent = text;
-    const render = () => { log.appendChild(row); log.scrollTop = log.scrollHeight; };
-    document.startViewTransition ? document.startViewTransition(render) : render();
-  };
-  function run(s){
-    if (es) es.close();
-    log.replaceChildren(); status.textContent = "running " + s + "…";
-    es = new EventSource("/api/run?scenario=" + encodeURIComponent(s));
-    const on = (e, f) => es.addEventListener(e, (ev) => f(JSON.parse(ev.data)));
-    on("run_start", d => add("delegate", "▶ " + d.detail));
-    on("delegate", d => add("delegate", "  → delegate to " + d.agent));
-    on("tool_call", d => add("tool_call", "    · " + d.tool + " (" + d.agent + ")" + (d.detail ? " " + d.detail : "")));
-    on("tool_result", d => add("tool_result", "    · " + (d.agent||"") + " " + (d.detail||"")));
-    on("synthesis", () => add("tool_result", "  ∑ synthesizing findings"));
-    on("done", d => { add("done", "✓ done"); if (d.data?.answer) add("done", "\n" + d.data.answer); status.textContent = "complete"; es.close(); });
-    on("error", d => { add("error", "✗ " + (d.detail||"error")); status.textContent = "error"; es.close(); });
+    row.className = "row"; row.dataset.l = level; row.innerHTML = html;
+    const paint = () => { log.appendChild(row); log.scrollTop = log.scrollHeight; };
+    (document.startViewTransition && !matchMedia("(prefers-reduced-motion:reduce)").matches)
+      ? document.startViewTransition(paint) : paint();
   }
-  for (const b of document.querySelectorAll(".btn[data-s]")) b.addEventListener("click", () => run(b.dataset.s));
+  function answer(text){
+    const div = document.createElement("div");
+    div.className = "answer"; div.textContent = text;
+    log.appendChild(div); log.scrollTop = log.scrollHeight;
+  }
+
+  window.run = function(scenario){
+    if (es) es.close();
+    log.replaceChildren(); resetLanes();
+    shell.classList.remove("done","error"); shell.classList.add("running");
+    statusEl.textContent = "running · " + scenario;
+    document.getElementById("lane-supervisor").dataset.on = "";
+    es = new EventSource("/api/run?scenario=" + encodeURIComponent(scenario));
+    const on = (e, f) => es.addEventListener(e, ev => { try { f(JSON.parse(ev.data)); } catch(_){} });
+
+    on("run_start", d => add("run_start", "▶ <b>supervisor</b> received: " + esc(d.detail)));
+    on("delegate", d => { setLane(d.agent, 1); add("delegate", "  → <b>delegate</b> to " + d.agent); });
+    on("tool_call", d => add("tool_call", "      · " + d.agent + " → <b>" + d.tool + "</b>" + (d.detail && d.detail!=="-" ? " " + esc(d.detail) : "")));
+    on("tool_result", d => { setLane(d.agent, 2); add("tool_result", "      ✓ " + d.agent + " — " + esc(d.detail||"")); });
+    on("synthesis", () => { document.getElementById("lane-supervisor").dataset.on = "1"; add("synthesis", "  ∑ <b>supervisor</b> synthesizing findings…"); });
+    on("done", d => {
+      shell.classList.remove("running"); shell.classList.add("done");
+      statusEl.textContent = "complete"; add("done", "✓ <b>done</b>");
+      if (d.data && d.data.answer) answer(d.data.answer);
+      es.close();
+    });
+    on("error", d => {
+      shell.classList.remove("running"); shell.classList.add("error");
+      statusEl.textContent = "error"; add("error", "✗ " + esc(d.detail||"error"));
+      es.close();
+    });
+  };
+  function esc(s){ const d = document.createElement("div"); d.textContent = String(s ?? ""); return d.innerHTML; }
+
+  // staggered reveal on scroll
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e,i) => { if (e.isIntersecting){ e.target.style.transitionDelay = (Math.min(i,5)*60)+"ms"; e.target.classList.add("in"); io.unobserve(e.target); } });
+  }, { threshold:.12 });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
 </script>
 </body>
 </html>
