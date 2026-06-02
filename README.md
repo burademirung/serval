@@ -228,7 +228,7 @@ The specialists' MCP client then targets the real Serval MCP server instead of t
 
 ## Best practices applied
 
-40 researched practices (Anthropic agent & context-engineering guidance, the MCP spec, OpenAI/LangChain operations, the Cloudflare platform), each mapped to a concrete mechanism — see the in-page **Best practices** section and the design spec for the full matrix. Highlights:
+Researched practices (Anthropic agent & context-engineering guidance, the MCP spec, OpenAI/LangChain operations, the Cloudflare platform), each mapped to a concrete mechanism and verified — see **[docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md)** for the authoritative, audit-reconciled reference (agent design · orchestration · security · robustness · verification). Highlights:
 
 - **Orchestration:** orchestrator–workers, a 4-field delegation contract, a simplicity gate, effort scaled to complexity, verbatim forwarding.
 - **Context engineering:** runtime context isolation (separate DOs), a lean supervisor that holds references not payloads, distilled returns, context-rot defenses, just-in-time data.
@@ -262,9 +262,11 @@ Deliberate, documented scope decisions (frontier-aware, not built):
 
 ---
 
-## Design docs
+## Documentation
 
-- `docs/superpowers/specs/2026-06-01-serval-multi-agent-orchestrator-design.md` — design spec (v3, Cloudflare-native), including the platform decision record and the full best-practices matrix.
+- **[docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md)** — the authoritative, evidence-based reference: every AI-agent and orchestration best practice mapped to its implementation and verification, plus the full security & robustness posture. Reconciled against the code via two independent audits.
+- **[docs/USAGE_AND_DEPLOYMENT.md](docs/USAGE_AND_DEPLOYMENT.md)** — how to use it (console, API, MCP), how to deploy to Cloudflare, and how an organization adopts it against real Serval (front-door channels, Cloudflare Access, rate limiting, cost control, human approval, customization, scaling) — with a production hardening checklist.
+- `docs/superpowers/specs/2026-06-01-serval-multi-agent-orchestrator-design.md` — design spec (v3, Cloudflare-native): platform decision record + the full best-practices matrix.
 - `docs/superpowers/plans/2026-06-01-serval-multi-agent-orchestrator.md` — the phased, TDD implementation plan with complete code.
 
 ---

@@ -30,6 +30,7 @@ export async function runToolLoop(opts: {
   callTool: CallTool;
   maxSteps?: number;
   maxTokens?: number;
+  effort?: string;
 }): Promise<LoopResult> {
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: opts.userPrompt }];
   const calls: { name: string; ok: boolean }[] = [];
@@ -42,7 +43,9 @@ export async function runToolLoop(opts: {
       system: opts.system,
       tools: opts.tools as unknown as Anthropic.Tool[],
       messages,
-    });
+      // Optional reasoning-effort knob; only sent when configured (off by default).
+      ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
+    } as Anthropic.MessageCreateParamsNonStreaming);
     messages.push({ role: "assistant", content: res.content });
 
     if (res.stop_reason !== "tool_use") {

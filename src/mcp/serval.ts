@@ -36,7 +36,7 @@ export class ServalMCP extends McpAgent<Env, State> {
 
   async init() {
     const read = { readOnlyHint: true };
-    const write = { readOnlyHint: false, idempotentHint: true };
+    const write = { readOnlyHint: false, destructiveHint: true };
     const S = this.server;
 
     S.registerTool(

@@ -28,8 +28,10 @@ export interface SpecialistConfig {
 async function connectServal(env: Env, agent: Agent<Env>) {
   const serverId = "serval";
 
-  if (env.SERVAL_MODE !== "mock") {
-    // HTTP transport with Bearer auth (live or any non-mock value)
+  // Fail safe: only an explicit "live" flips to the HTTP/Bearer path. Any other
+  // value (incl. a typo) stays on the mock and never sends the token off-box.
+  if (String(env.SERVAL_MODE) === "live") {
+    // HTTP transport with Bearer auth
     await agent.addMcpServer(serverId, env.SERVAL_MCP_URL, {
       transport: { headers: { Authorization: `Bearer ${env.SERVAL_TOKEN}` } },
     });
@@ -82,16 +84,48 @@ export async function runSpecialist(agent: Agent<Env>, cfg: SpecialistConfig, ta
   const { finalText, calls } = await runToolLoop({
     client, model: cfg.model(env), system: cfg.system, userPrompt: taskSpec,
     tools: anthropicTools, callTool, maxSteps: 10, maxTokens: 1500,
+    effort: env.CLAUDE_EFFORT,
   });
 
-  const m = finalText.match(/```json\s*([\s\S]*?)```/);
-  let finding: Finding;
-  try {
-    finding = FindingSchema.parse(JSON.parse(m ? m[1]! : finalText));
-  } catch {
-    finding = { agent: cfg.id, summary: finalText.slice(0, 600), actions: calls.map((c) => ({ tool: c.name, target: "-", result: c.ok ? "ok" : "error" })), references: [] };
+  // 1) Try to parse the Finding from the model's final message.
+  let finding = extractFinding(finalText);
+
+  // 2) On failure, one re-ask: prompt the model to reformat into valid JSON.
+  if (!finding) {
+    try {
+      const fix = await client.messages.create({
+        model: cfg.model(env),
+        max_tokens: 700,
+        messages: [{ role: "user", content:
+          `Reformat the following into EXACTLY one \`\`\`json block matching ` +
+          `{"agent":"${cfg.id}","summary":"...","actions":[{"tool":"...","target":"...","result":"..."}],"references":["..."]} ` +
+          `and nothing else:\n\n${finalText.slice(0, 2000)}` }],
+      });
+      const fixText = fix.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+      finding = extractFinding(fixText);
+    } catch { /* fall through to deterministic fallback */ }
+  }
+
+  // 3) Deterministic fallback so the run always yields a structured Finding.
+  if (!finding) {
+    finding = {
+      agent: cfg.id,
+      summary: finalText.slice(0, 600),
+      actions: calls.map((c) => ({ tool: c.name, target: "-", result: c.ok ? "ok" : "error" })),
+      references: [],
+    };
   }
   return finding;
+}
+
+/** Parse a Finding from a model message (trailing ```json block, or whole text). */
+function extractFinding(text: string): Finding | null {
+  const m = text.match(/```json\s*([\s\S]*?)```/);
+  try {
+    return FindingSchema.parse(JSON.parse(m ? m[1]! : text));
+  } catch {
+    return null;
+  }
 }
 
 const FINDING_FMT = `End with a single \`\`\`json block: {"agent":"<id>","summary":"...","actions":[{"tool":"...","target":"...","result":"..."}],"references":["..."]}. One-paragraph summary; IDs in references, never raw payloads.`;

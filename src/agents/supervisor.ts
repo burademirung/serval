@@ -18,7 +18,8 @@ async function synthesize(env: Env, prompt: string, findings: Finding[]): Promis
   const merge = () => findings.map((f) => `• ${f.summary}`).join("\n");
   try {
     const client = makeAnthropic(env);
-    const res = await client.messages.create({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = await client.messages.create({
       model: env.MODEL_SUPERVISOR,
       max_tokens: 700,
       system: SUPERVISOR_SYSTEM,
@@ -31,15 +32,47 @@ async function synthesize(env: Env, prompt: string, findings: Finding[]): Promis
             `\n\nSynthesize one clear, concise answer for the user.`,
         },
       ],
-    });
-    const text = res.content
-      .map((b) => (b.type === "text" ? b.text : ""))
+      ...(env.CLAUDE_EFFORT ? { output_config: { effort: env.CLAUDE_EFFORT } } : {}),
+    } as any);
+    const text = (res.content as Array<{ type: string; text?: string }>)
+      .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
       .join("\n")
       .trim();
     return text || merge();
   } catch {
     return merge();
   }
+}
+
+const ALL_SPECS: Spec[] = ["triage", "access-review", "onboarding"];
+
+/** Dynamic routing / simplicity gate: the supervisor model decides which specialists
+ *  a request needs — ONE for single-domain, several only when it spans domains.
+ *  Falls back to the provided default (the scenario's specialists) on any failure,
+ *  so the demo stays predictable and the path degrades gracefully. */
+async function route(env: Env, prompt: string, fallback: Spec[]): Promise<Spec[]> {
+  try {
+    const client = makeAnthropic(env);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = await client.messages.create({
+      model: env.MODEL_SUPERVISOR,
+      max_tokens: 120,
+      system: SUPERVISOR_SYSTEM,
+      messages: [{ role: "user", content:
+        `Request: "${prompt}".\nAvailable specialists: triage, access-review, onboarding.\n` +
+        `Return ONLY a JSON array of the specialists this request needs. Use exactly ONE for a ` +
+        `single-domain request; include several ONLY if it genuinely spans domains.` }],
+      ...(env.CLAUDE_EFFORT ? { output_config: { effort: env.CLAUDE_EFFORT } } : {}),
+    } as any);
+    const text = (res.content as Array<{ type: string; text?: string }>)
+      .map((b) => (b.type === "text" ? (b.text ?? "") : "")).join("");
+    const m = text.match(/\[[\s\S]*?\]/);
+    if (m) {
+      const arr = (JSON.parse(m[0]) as unknown[]).filter((s): s is Spec => ALL_SPECS.includes(s as Spec));
+      if (arr.length) return arr;
+    }
+  } catch { /* fall through */ }
+  return fallback;
 }
 
 interface SupervisorState {
@@ -53,17 +86,21 @@ export class SupervisorAgent extends Agent<Env, SupervisorState> {
 
   /** Run a scenario; returns an SSE ReadableStream of trace events.
    *  Not async: builds and returns the streaming Response synchronously. */
-  stream(prompt: string, specialists: Spec[]): Response {
+  stream(prompt: string, fallbackSpecialists: Spec[]): Response {
     const env = this.env;
     const enc = new TextEncoder();
     const supervisor = this;
+    const traceId = crypto.randomUUID();
 
     const body = new ReadableStream({
       async start(controller) {
         const emit = (ev: TraceEvent) =>
-          controller.enqueue(enc.encode(sse(ev)));
+          controller.enqueue(enc.encode(sse({ ...ev, traceId })));
         try {
           emit({ name: "run_start", detail: prompt });
+          // Simplicity gate: the supervisor model decides which specialists this
+          // request needs (one for single-domain, several only if it spans domains).
+          const specialists = await route(env, prompt, fallbackSpecialists);
           supervisor.setState({ plan: { prompt, specialists }, status: "running" });
 
           const taskSpec = (s: Spec) =>
