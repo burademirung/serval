@@ -107,6 +107,12 @@ export class SupervisorAgent extends Agent<Env, SupervisorState> {
       async start(controller) {
         const emit = (ev: TraceEvent) =>
           controller.enqueue(enc.encode(sse({ ...ev, traceId })));
+        // Heartbeat: keep the SSE connection alive during long, byte-silent phases
+        // (routing + synthesis are multi-second LLM calls). Without it, the browser/edge
+        // drops the idle stream and the client reports "connection lost".
+        const heartbeat = setInterval(() => {
+          try { controller.enqueue(enc.encode(": ping\n\n")); } catch { /* stream closed */ }
+        }, 15000);
         try {
           emit({ name: "run_start", detail: prompt });
 
@@ -172,9 +178,10 @@ export class SupervisorAgent extends Agent<Env, SupervisorState> {
           emit({ name: "done", data: result });
         } catch (e) {
           console.error("orchestration run failed:", e);
-          emit({ name: "error", detail: "Run failed" });
+          try { emit({ name: "error", detail: "Run failed" }); } catch { /* stream already gone */ }
         } finally {
-          controller.close();
+          clearInterval(heartbeat);
+          try { controller.close(); } catch { /* already closed */ }
         }
       },
       // Best-effort cancellation on client disconnect: stops the supervisor's own

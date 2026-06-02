@@ -668,15 +668,23 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
     es = new EventSource("/api/run?scenario=" + encodeURIComponent(scenario));
     const on = (e, f) => es.addEventListener(e, ev => { try { f(JSON.parse(ev.data)); } catch(_){} });
 
+    let finished = false;  // set once a terminal (done/error) event arrives
+
     const timer = setTimeout(() => {
+      if (finished) return;
       es.close(); shell.classList.remove("running"); shell.classList.add("error");
       statusEl.textContent="error"; add("error","✗ timed out");
     }, 120000);
 
     es.onerror = () => {
-      if (es.readyState === EventSource.CONNECTING) es.close();
+      // Always close: EventSource would otherwise auto-reconnect and start a brand-new
+      // run (/api/run is stateless). Heartbeats keep long runs alive, so reaching here
+      // mid-run is a genuine drop. Only surface it if no terminal event already handled it.
+      es.close();
+      if (finished) return;
+      clearTimeout(timer);
       shell.classList.remove("running"); shell.classList.add("error");
-      statusEl.textContent="error"; add("error","✗ connection lost"); clearTimeout(timer);
+      statusEl.textContent = "error"; add("error", "✗ connection lost");
     };
 
     on("run_start", d => add("run_start", "▶ <b>supervisor</b> received: " + esc(d.detail)));
@@ -685,14 +693,14 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
     on("tool_result", d => { setLane(d.agent, 2); add("tool_result", "      ✓ " + esc(d.agent) + " — " + esc(d.detail||"")); });
     on("synthesis", () => { document.getElementById("lane-supervisor").dataset.on = "1"; add("synthesis", "  ∑ <b>supervisor</b> synthesizing findings…"); });
     on("done", d => {
-      clearTimeout(timer);
+      finished = true; clearTimeout(timer);
       shell.classList.remove("running"); shell.classList.add("done");
       statusEl.textContent = "complete"; add("done", "✓ <b>done</b>");
       if (d.data && d.data.answer) answer(d.data.answer);
       es.close();
     });
     on("error", d => {
-      clearTimeout(timer);
+      finished = true; clearTimeout(timer);
       shell.classList.remove("running"); shell.classList.add("error");
       statusEl.textContent = "error"; add("error", "✗ " + esc(d.detail||"error"));
       es.close();
