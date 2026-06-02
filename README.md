@@ -71,7 +71,7 @@ Serval (the product) is an AI-native ITSM platform — its own architecture is m
                 • public Streamable HTTP at /mcp  ⇄  live Serval by env
 ```
 
-> **Visual deployment diagram:** [serval-orchestrator.burademirung.workers.dev/deployment.html](https://serval-orchestrator.burademirung.workers.dev/deployment.html) (source: `src/public/deployment.html`) — a one-glance view of the Worker, the five Durable Objects, and Claude via AI Gateway.
+> **Visual deployment diagram:** [serval-orchestrator.burademirung.workers.dev/deployment](https://serval-orchestrator.burademirung.workers.dev/deployment) (source: `src/public/deployment.html`) — a one-glance view of the Worker, the five Durable Objects, and Claude via AI Gateway.
 
 **Why this shape:** context isolation is the hard part of multi-agent systems. Here it's enforced by the **runtime** — each specialist is a separate Durable Object with its own context window — not by prompt discipline. The supervisor holds only the plan and distilled findings; specialists never leak their raw tool output upward.
 
