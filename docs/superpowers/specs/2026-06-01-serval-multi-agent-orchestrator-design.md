@@ -1,7 +1,10 @@
 # Serval Multi-Agent IT Orchestrator — Design Spec (v3, Cloudflare-native)
 
 **Date:** 2026-06-01
-**Status:** Approved design, pre-implementation (v3 — re-platformed onto Cloudflare)
+**Status:** ✅ Implemented & deployed. Live at
+https://serval-orchestrator.burademirung.workers.dev · source
+https://github.com/burademirung/serval · see `README.md` for run/deploy details.
+(v3 — re-platformed onto Cloudflare)
 **Author:** Brainstormed with user (vlad@degenito.ai)
 
 > **v3 supersedes v2.** New hard requirement: the whole solution **should deploy on
