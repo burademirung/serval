@@ -1,5 +1,5 @@
 import { Agent } from "agents";
-import { McpAgent } from "agents/mcp";
+import type { McpAgent } from "agents/mcp";
 import { makeAnthropic, runToolLoop } from "../lib/anthropic";
 import { toAnthropicTools, bareName } from "../lib/mcp-tools";
 import type { McpToolDef } from "../lib/mcp-tools";
@@ -122,7 +122,7 @@ export async function runSpecialist(agent: Agent<Env>, cfg: SpecialistConfig, ta
 function extractFinding(text: string): Finding | null {
   const m = text.match(/```json\s*([\s\S]*?)```/);
   try {
-    return FindingSchema.parse(JSON.parse(m ? m[1]! : text));
+    return FindingSchema.parse(JSON.parse(m ? (m[1] ?? text) : text));
   } catch {
     return null;
   }

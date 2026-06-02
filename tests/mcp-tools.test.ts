@@ -41,6 +41,41 @@ describe("mock serval operations", () => {
   });
 });
 
+describe("routing filter logic", () => {
+  // Replicate the filter used inside route() to validate it standalone.
+  const ALL_SPECS = ["triage", "access-review", "onboarding"] as const;
+  type Spec = (typeof ALL_SPECS)[number];
+  function filterSpecs(arr: string[]): Spec[] {
+    return arr.filter((s): s is Spec => ALL_SPECS.includes(s as Spec));
+  }
+
+  it("keeps valid specialist names and drops unknown ones", () => {
+    expect(filterSpecs(["triage", "unknown"])).toEqual(["triage"]);
+  });
+  it("returns empty array for empty input", () => {
+    expect(filterSpecs([])).toEqual([]);
+  });
+  it("drops all unknown specialists", () => {
+    expect(filterSpecs(["x", "y"])).toEqual([]);
+  });
+});
+
+describe("create_access_request defaults", () => {
+  it("always creates status pending", () => {
+    const result = operations.create_access_request(createStore(), { userId: "USR-1", resource: "github", scope: "admin" }) as { data: any };
+    expect(result.data.status).toBe("pending");
+  });
+});
+
+describe("bareName edge cases", () => {
+  it("returns flat name unchanged", () => {
+    expect(bareName("flat")).toBe("flat");
+  });
+  it("returns empty string for empty input", () => {
+    expect(bareName("")).toBe("");
+  });
+});
+
 describe("MCP→Anthropic tool conversion", () => {
   const defs = [
     { name: "serval.list_tickets", description: "List", inputSchema: { type: "object", properties: {} } },

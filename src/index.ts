@@ -1,4 +1,3 @@
-import { routeAgentRequest } from "agents";
 import { ServalMCP } from "./mcp/serval";
 
 export { ServalMCP };
@@ -6,6 +5,13 @@ export { SupervisorAgent } from "./agents/supervisor";
 export { TriageAgent } from "./agents/triage";
 export { AccessReviewAgent } from "./agents/access-review";
 export { OnboardingAgent } from "./agents/onboarding";
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -21,7 +27,7 @@ export default {
         (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "") ||
         url.searchParams.get("token") ||
         "";
-      if (provided !== guard) return new Response("Unauthorized", { status: 401 });
+      if (!safeEqual(provided, guard)) return new Response("Unauthorized", { status: 401 });
     }
 
     if (url.pathname.startsWith("/mcp")) {
@@ -32,9 +38,6 @@ export default {
       const { runScenario } = await import("./agents/run");
       return runScenario(request, env);
     }
-
-    const routed = await routeAgentRequest(request, env, { cors: true });
-    if (routed) return routed;
 
     return new Response("Not found", { status: 404 });
   },

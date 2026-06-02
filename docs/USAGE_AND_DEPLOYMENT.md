@@ -90,8 +90,9 @@ npx wrangler deploy                 # → https://<name>.<subdomain>.workers.dev
 | `SERVAL_MODE` | var | `mock` (default) or `live` |
 | `SERVAL_MCP_URL`, `SERVAL_TOKEN` | secret | Real Serval endpoint + token (live mode) |
 | `MODEL_SUPERVISOR`/`MODEL_SONNET`/`MODEL_HAIKU` | var | Model IDs (bumpable without code) |
+| `MODEL_ROUTER` | var | Cheap model for the routing decision (defaults to Haiku) |
 | `PUBLIC_ACCESS_TOKEN` | secret | Optional bearer gate on `/mcp` + `/api/run` |
-| `CLAUDE_EFFORT` | var | Optional reasoning effort (off by default) |
+| `CLAUDE_EFFORT` | secret | Optional reasoning effort (off by default) |
 
 ---
 

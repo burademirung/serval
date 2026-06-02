@@ -12,7 +12,7 @@
   :root{
     --ink:#0a0b0d; --ink-2:#0e1013; --surface:#13161b; --surface-2:#191d24; --raise:#1f242c;
     --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
-    --text:#ece7dd; --muted:#8b909b; --faint:#565c67;
+    --text:#ece7dd; --muted:#8b909b; --faint:#80858f;
     --gold:#f4b740; --gold-2:#f6cd78; --gold-deep:#c98a1f;
     --teal:#39d7c6; --blue:#6bb6ff;
     --ok:#62d68a; --warn:#f4b740; --err:#f5736b;
@@ -28,7 +28,7 @@
     margin:0;background:var(--ink);color:var(--text);
     font-family:var(--body);font-weight:400;line-height:1.6;
     -webkit-font-smoothing:antialiased;letter-spacing:.005em;
-    overflow-x:hidden;
+    overflow-x:clip;
   }
   /* Atmosphere: gradient-mesh glows + fine grain + serval-spot texture */
   body::before{
@@ -49,7 +49,6 @@
   /* ---- type ---- */
   h1,h2,h3{margin:0;font-family:var(--display);font-weight:500;letter-spacing:-.015em;line-height:1.05}
   .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold);font-weight:500}
-  .sub{color:var(--muted);font-size:18px;max-width:62ch}
   .mono{font-family:var(--mono)}
   .sec-num{font-family:var(--mono);font-size:13px;color:var(--gold-deep);letter-spacing:.2em}
 
@@ -248,6 +247,17 @@
   .foot-links a{display:block;color:var(--muted);margin-bottom:9px}.foot-links a:hover{color:var(--gold)}
   .colophon{margin-top:46px;padding-top:22px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--faint);display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
 
+  /* ---- skip link ---- */
+  .skip-link{position:absolute;top:-999px;left:8px;background:var(--ink);color:var(--gold);padding:8px 14px;font-family:var(--mono);font-size:13px;border:1px solid var(--gold);border-radius:8px;z-index:200;text-decoration:none}
+  .skip-link:focus{top:8px}
+
+  /* ---- focus visibility ---- */
+  :focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:3px}
+  .btn-primary:focus-visible{outline-offset:4px}
+
+  /* ---- diagram responsive ---- */
+  @media(max-width:480px){.diagram .node{min-width:0!important;width:100%}}
+
   /* staggered reveal */
   .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
   .reveal.in{opacity:1;transform:none}
@@ -259,9 +269,10 @@
 </style>
 </head>
 <body>
+<a href="#main-content" class="skip-link">Skip to content</a>
 
-<nav><div class="wrap">
-  <div class="brand"><span class="glyph"></span> Serval</div>
+<nav aria-label="Main"><div class="wrap">
+  <div class="brand"><span class="glyph" aria-hidden="true"></span> Serval</div>
   <div class="navlinks">
     <a href="#demo">Live console</a>
     <a href="#architecture">Architecture</a>
@@ -276,47 +287,48 @@
   <span class="by">Designed &amp; built by <strong>Vladimir Kamenev</strong></span>
   <span class="contact">
     <a href="mailto:burademirung@gmail.com">burademirung@gmail.com</a>
-    <span class="divv">·</span>
+    <span class="divv" aria-hidden="true">·</span>
     <a href="tel:+15123369618">(512)&nbsp;336-9618</a>
-    <span class="divv">·</span>
+    <span class="divv" aria-hidden="true">·</span>
     <a href="https://github.com/burademirung/serval" target="_blank" rel="noopener">github.com/burademirung/serval</a>
   </span>
 </div></div>
 
+<main id="main-content" tabindex="-1">
 <header><div class="wrap">
-  <div class="live-badge reveal"><span class="dot"></span> Deployed on Cloudflare · serval-orchestrator.workers.dev</div>
+  <div class="live-badge reveal"><span class="dot" aria-hidden="true"></span> Deployed on Cloudflare · serval-orchestrator.burademirung.workers.dev</div>
   <h1 class="hero reveal">A multi-agent <em>control plane</em> for IT service management.</h1>
   <p class="hero-sub reveal">A supervisor agent decomposes each request and dispatches scoped specialist agents — Triage, Access-Review, Onboarding — that operate Serval's system of record over the Model Context Protocol. Every agent is a Cloudflare Durable Object. Watch it orchestrate, live.</p>
   <div class="hero-cta reveal">
-    <button class="btn-primary" onclick="document.getElementById('demo').scrollIntoView();setTimeout(()=>run('fanout'),420)">▶ Run the fan-out demo</button>
+    <button type="button" class="btn-primary" onclick="document.getElementById('demo').scrollIntoView({behavior:'smooth'});setTimeout(()=>run('fanout'),420)">▶ Run the fan-out demo</button>
     <a class="btn-ghost" href="#architecture">How it works ↓</a>
   </div>
   <div class="stats">
     <div class="stat reveal"><div class="n"><b>4</b></div><div class="l">Coordinated agents</div></div>
     <div class="stat reveal"><div class="n"><b>5</b></div><div class="l">Durable Objects</div></div>
     <div class="stat reveal"><div class="n"><b>12</b></div><div class="l">Serval MCP tools</div></div>
-    <div class="stat reveal"><div class="n"><b>40</b></div><div class="l">Best practices applied</div></div>
+    <div class="stat reveal"><div class="n"><b>30</b></div><div class="l">Best practices applied</div></div>
     <div class="stat reveal"><div class="n">opus<b>·</b>sonnet<b>·</b>haiku</div><div class="l">Tiered Claude models</div></div>
   </div>
 </div></header>
 
 <!-- ===================== LIVE CONSOLE ===================== -->
-<section id="demo"><div class="wrap">
-  <div class="shead reveal"><span class="sec-num">01</span><h2>The orchestration, streaming live</h2></div>
+<section id="demo" aria-labelledby="h-demo"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">01</span><h2 id="h-demo">The orchestration, streaming live</h2></div>
   <p class="slead reveal">Pick a scenario. The supervisor Durable Object plans, delegates over RPC, and the chosen specialists run their own Claude tool-loops against the Serval MCP backend — every decision and tool call streamed to your browser over Server-Sent Events.</p>
 
   <div class="scenarios reveal">
-    <button class="chip" onclick="run('triage')"><span class="k"></span>Triage tickets</button>
-    <button class="chip" onclick="run('access')"><span class="k"></span>Review access</button>
-    <button class="chip" onclick="run('onboard')"><span class="k"></span>Onboard employee</button>
-    <button class="chip fan" onclick="run('fanout')"><span class="k"></span>Fan-out · onboard + review</button>
+    <button type="button" class="chip" onclick="run('triage')"><span class="k" aria-hidden="true"></span>Triage tickets</button>
+    <button type="button" class="chip" onclick="run('access')"><span class="k" aria-hidden="true"></span>Review access</button>
+    <button type="button" class="chip" onclick="run('onboard')"><span class="k" aria-hidden="true"></span>Onboard employee</button>
+    <button type="button" class="chip fan" onclick="run('fanout')"><span class="k" aria-hidden="true"></span>Fan-out · onboard + review</button>
   </div>
 
   <div class="console-shell reveal" id="shell">
     <div class="console-top">
-      <span class="traffic"><i></i><i></i><i></i></span>
+      <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="console-title">orchestration trace · /api/run</span>
-      <span class="pill"><span class="s"></span><span id="status">idle</span></span>
+      <span class="pill"><span class="s" aria-hidden="true"></span><span id="status" aria-live="polite" aria-atomic="true">idle</span></span>
     </div>
     <div class="console-body">
       <div class="lanes">
@@ -326,15 +338,15 @@
         <div class="lane" id="lane-access-review"><div class="nm">Access-Review</div><div class="md">sonnet-4-6</div></div>
         <div class="lane" id="lane-onboarding"><div class="nm">Onboarding</div><div class="md">sonnet-4-6</div></div>
       </div>
-      <div class="log" id="log"></div>
+      <div class="log" id="log" role="log" aria-live="polite" aria-label="Orchestration trace output"></div>
     </div>
   </div>
   <p class="note">Live runs call Claude through Cloudflare AI Gateway. The backend is a faithful in-Worker mock of Serval (12 tools); flip one env var to point at the real Serval MCP server.</p>
 </div></section>
 
 <!-- ===================== ARCHITECTURE ===================== -->
-<section id="architecture"><div class="wrap">
-  <div class="shead reveal"><span class="sec-num">02</span><h2>One supervisor, three specialists, a shared system of record</h2></div>
+<section id="architecture" aria-labelledby="h-architecture"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">02</span><h2 id="h-architecture">One supervisor, three specialists, a shared system of record</h2></div>
   <p class="slead reveal">The hard part of a multi-agent system is coordination and context. Here, each agent is an independently-addressable Durable Object, so context isolation is enforced by the <em>runtime</em> — not by prompt discipline. The supervisor holds only references and distilled findings; specialists never leak their transcripts upward.</p>
 
   <div class="diagram reveal">
@@ -361,8 +373,8 @@
 </div></section>
 
 <!-- ===================== AGENT REGISTRY ===================== -->
-<section><div class="wrap">
-  <div class="shead reveal"><span class="sec-num">03</span><h2>The agent registry</h2></div>
+<section id="registry" aria-labelledby="h-registry"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">03</span><h2 id="h-registry">The agent registry</h2></div>
   <p class="slead reveal">Least privilege is real, not cosmetic: each specialist is handed only its slice of the Serval toolset before any tool reaches Claude. A specialist literally cannot see — and therefore cannot call — a tool outside its scope.</p>
   <div class="registry reveal">
     <div class="reg-row h"><div>Agent</div><div>Model</div><div>Role</div><div>Scoped tools</div></div>
@@ -375,8 +387,8 @@
 </div></section>
 
 <!-- ===================== TECH STACK ===================== -->
-<section><div class="wrap">
-  <div class="shead reveal"><span class="sec-num">04</span><h2>Everything used to build it</h2></div>
+<section id="stack" aria-labelledby="h-stack"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">04</span><h2 id="h-stack">Everything used to build it</h2></div>
   <p class="slead reveal">A deliberately current stack — the June-2026 frontier of agents, protocol, and edge platform, with every choice justified.</p>
   <div class="grid g3 reveal">
     <div class="card"><span class="tag">runtime</span><div class="ic">Cloudflare</div><h3>Agents SDK on Durable Objects</h3><p>Supervisor + specialists + the MCP backend are all Durable Objects. RPC, SQLite state, hibernation, and edge streaming come for free.</p></div>
@@ -389,9 +401,9 @@
 </div></section>
 
 <!-- ===================== BEST PRACTICES ===================== -->
-<section id="practices"><div class="wrap">
-  <div class="shead reveal"><span class="sec-num">05</span><h2>The best practices, and how each is implemented</h2></div>
-  <p class="slead reveal">Forty researched practices from Anthropic's agent &amp; context-engineering guidance, the MCP spec, OpenAI/LangChain operations, and the Cloudflare platform — every one mapped to a concrete mechanism in the code, not just an aspiration.</p>
+<section id="practices" aria-labelledby="h-practices"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">05</span><h2 id="h-practices">The best practices, and how each is implemented</h2></div>
+  <p class="slead reveal">Thirty researched practices from Anthropic's agent &amp; context-engineering guidance, the MCP spec, OpenAI/LangChain operations, and the Cloudflare platform — every one mapped to a concrete mechanism in the code, not just an aspiration.</p>
 
   <div class="grid g2 reveal">
     <div class="bp-group">
@@ -451,8 +463,8 @@
 </div></section>
 
 <!-- ===================== SAFETY ===================== -->
-<section id="safety"><div class="wrap">
-  <div class="shead reveal"><span class="sec-num">06</span><h2>The safety boundary is code, not a prompt</h2></div>
+<section id="safety" aria-labelledby="h-safety"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">06</span><h2 id="h-safety">The safety boundary is code, not a prompt</h2></div>
   <p class="slead reveal">The headline claim of an agentic ITSM tool is that it grants access safely. We don't trust the model to honor that. The Access-Review agent's decisions pass through a deterministic policy <em>inside the tool itself</em> — so even a jailbroken model cannot approve production or admin access.</p>
   <div class="safety reveal">
     <div style="font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-deep)">decideAccess() · enforced in review_access_request</div>
@@ -461,7 +473,7 @@
       <span class="verdict es">● escalate — admin or production grant</span>
       <span class="verdict dn">● deny — inactive requester</span>
     </div>
-    <pre class="code"><span class="cm">// An agent decision can never be more permissive than policy allows.</span>
+    <pre class="code" role="region" aria-label="Access policy enforcement code"><span class="cm">// An agent decision can never be more permissive than policy allows.</span>
 <span class="kw">const</span> verdict = <span class="fn">decideAccess</span>({ resource, scope, requesterActive, isProduction, isAdmin });
 <span class="kw">const</span> enforced = RANK[agentDecision] &gt; RANK[verdict.decision];
 record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy wins, always</span></pre>
@@ -469,8 +481,8 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
 </div></section>
 
 <!-- ===================== BUILD STORY ===================== -->
-<section id="build"><div class="wrap">
-  <div class="shead reveal"><span class="sec-num">07</span><h2>How it was built</h2></div>
+<section id="build" aria-labelledby="h-build"><div class="wrap">
+  <div class="shead reveal"><span class="sec-num">07</span><h2 id="h-build">How it was built</h2></div>
   <p class="slead reveal">From a single URL to a deployed multi-agent system — research-first, spec-driven, and verified in the real app.</p>
   <div class="timeline reveal">
     <div class="tl-item"><div class="ph">Research</div><h3>Deep, fact-checked research</h3><p>The product, the MCP API, the June-2026 agent &amp; context-engineering frontier, and the Cloudflare platform — adversarially verified, then distilled into a design.</p></div>
@@ -480,10 +492,11 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
   </div>
 </div></section>
 
+</main>
 <footer><div class="wrap">
   <div class="foot-grid">
     <div class="foot-brand">
-      <div class="brand" style="font-size:22px;margin-bottom:14px"><span class="glyph"></span> Serval</div>
+      <div class="brand" style="font-size:22px;margin-bottom:14px"><span class="glyph" aria-hidden="true"></span> Serval</div>
       <p style="color:var(--muted);font-size:14.5px;margin:0">A multi-agent IT orchestrator that operates Serval ITSM over MCP — supervisor and specialists as Cloudflare Durable Objects, Claude via AI Gateway. Mock backend included; real Serval one env var away.</p>
     </div>
     <div class="foot-links">
@@ -501,7 +514,7 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
       </div>
       <div>
         <h4>Contact</h4>
-        <a style="color:var(--text);font-weight:500">Vladimir Kamenev</a>
+        <strong style="color:var(--text)">Vladimir Kamenev</strong>
         <a href="mailto:burademirung@gmail.com">burademirung@gmail.com</a>
         <a href="tel:+15123369618">(512) 336-9618</a>
         <a href="https://github.com/burademirung/serval" target="_blank" rel="noopener">github.com/burademirung/serval ↗</a>
@@ -525,11 +538,8 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
   const resetLanes = () => { lanes.forEach(l => setLane(l, 0)); setLane("supervisor", ""); };
 
   function add(level, html){
-    const row = document.createElement("div");
-    row.className = "row"; row.dataset.l = level; row.innerHTML = html;
-    const paint = () => { log.appendChild(row); log.scrollTop = log.scrollHeight; };
-    (document.startViewTransition && !matchMedia("(prefers-reduced-motion:reduce)").matches)
-      ? document.startViewTransition(paint) : paint();
+    const row=document.createElement("div"); row.className="row"; row.dataset.l=level; row.innerHTML=html;
+    log.appendChild(row); log.scrollTop=log.scrollHeight;
   }
   function answer(text){
     const div = document.createElement("div");
@@ -546,18 +556,31 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
     es = new EventSource("/api/run?scenario=" + encodeURIComponent(scenario));
     const on = (e, f) => es.addEventListener(e, ev => { try { f(JSON.parse(ev.data)); } catch(_){} });
 
+    const timer = setTimeout(() => {
+      es.close(); shell.classList.remove("running"); shell.classList.add("error");
+      statusEl.textContent="error"; add("error","✗ timed out");
+    }, 120000);
+
+    es.onerror = () => {
+      if (es.readyState === EventSource.CONNECTING) es.close();
+      shell.classList.remove("running"); shell.classList.add("error");
+      statusEl.textContent="error"; add("error","✗ connection lost"); clearTimeout(timer);
+    };
+
     on("run_start", d => add("run_start", "▶ <b>supervisor</b> received: " + esc(d.detail)));
     on("delegate", d => { setLane(d.agent, 1); add("delegate", "  → <b>delegate</b> to " + esc(d.agent)); });
     on("tool_call", d => add("tool_call", "      · " + esc(d.agent) + " → <b>" + esc(d.tool) + "</b>" + (d.detail && d.detail!=="-" ? " " + esc(d.detail) : "")));
     on("tool_result", d => { setLane(d.agent, 2); add("tool_result", "      ✓ " + esc(d.agent) + " — " + esc(d.detail||"")); });
     on("synthesis", () => { document.getElementById("lane-supervisor").dataset.on = "1"; add("synthesis", "  ∑ <b>supervisor</b> synthesizing findings…"); });
     on("done", d => {
+      clearTimeout(timer);
       shell.classList.remove("running"); shell.classList.add("done");
       statusEl.textContent = "complete"; add("done", "✓ <b>done</b>");
       if (d.data && d.data.answer) answer(d.data.answer);
       es.close();
     });
     on("error", d => {
+      clearTimeout(timer);
       shell.classList.remove("running"); shell.classList.add("error");
       statusEl.textContent = "error"; add("error", "✗ " + esc(d.detail||"error"));
       es.close();

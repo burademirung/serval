@@ -49,13 +49,13 @@ Serval (the product) is an AI-native ITSM platform — its own architecture is m
                  │  GET /                 ← served at the edge
                  │  GET /api/run?scenario=…   (SSE)
                  ▼
-        Worker fetch → routeAgentRequest() · /mcp → ServalMCP.serve
+        Worker fetch → /api/run (supervisor) · /mcp → ServalMCP.serve
                  ▼
    SupervisorAgent  (Durable Object · claude-opus-4-8)
      • plans, applies a simplicity gate, persists its plan
      • delegates via getAgentByName() RPC, parallel Promise.all fan-out
      • synthesizes the final answer with Opus (deterministic fallback)
-     • streams an OTel-shaped trace to the browser via SSE
+     • streams a structured per-run trace (traceId on every event) to the browser via SSE
         ├───────────────┬────────────────┬──────────────┐
         ▼               ▼                ▼
    TriageAgent    AccessReviewAgent   OnboardingAgent     (Durable Objects)
@@ -137,7 +137,7 @@ It is pure, unit-tested, and the single source of truth.
 ## Tech stack
 
 - **Platform:** Cloudflare Workers + **Durable Objects** + **Static Assets**; `wrangler` (local `wrangler dev` on workerd; `wrangler deploy`).
-- **Agents:** `agents@0.6.0` (Cloudflare Agents SDK) — `Agent`, `McpAgent`, `routeAgentRequest`, `getAgentByName`, the `this.mcp` MCP client.
+- **Agents:** `agents@0.6.0` (Cloudflare Agents SDK) — `Agent`, `McpAgent`, `getAgentByName` (server-side RPC), the `this.mcp` MCP client.
 - **MCP:** `@modelcontextprotocol/sdk@1.29.0` (via `agents/mcp`), spec 2025-11-25.
 - **LLM:** `@anthropic-ai/sdk@0.40.1` (fetch-based) routed through **Cloudflare AI Gateway** (caching, retries, observability, reconnect buffering). Falls back to calling Anthropic directly when the gateway vars are absent.
 - **Validation/tests:** `zod`, `vitest` + `@cloudflare/vitest-pool-workers`.
@@ -212,6 +212,19 @@ npx wrangler deploy        # → https://<name>.<subdomain>.workers.dev
 
 `wrangler deploy` uploads the Worker, applies the Durable Object migration (creates the 5 SQLite-backed classes on first deploy), and ships the static console. Validate the bundle first with `npx wrangler deploy --dry-run`.
 
+### Environment & secrets reference
+
+| Name | Where | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | secret | Required for live agent runs |
+| `CF_ACCOUNT_ID`, `GATEWAY_ID` | secret | Route Claude through AI Gateway (optional) |
+| `SERVAL_MODE` | var | `mock` (default) or `live` |
+| `SERVAL_MCP_URL`, `SERVAL_TOKEN` | secret | Real Serval endpoint + token (live mode) |
+| `MODEL_SUPERVISOR`/`MODEL_SONNET`/`MODEL_HAIKU` | var | Model IDs (bumpable without code) |
+| `MODEL_ROUTER` | var | Cheap model used for the routing/simplicity-gate decision |
+| `PUBLIC_ACCESS_TOKEN` | secret | Optional bearer gate on `/mcp` + `/api/run` |
+| `CLAUDE_EFFORT` | secret | Optional reasoning effort (off by default) |
+
 ---
 
 ## Using real Serval
@@ -234,7 +247,7 @@ Researched practices (Anthropic agent & context-engineering guidance, the MCP sp
 - **Context engineering:** runtime context isolation (separate DOs), a lean supervisor that holds references not payloads, distilled returns, context-rot defenses, just-in-time data.
 - **Tools/MCP:** a faithful mock, structured output, tool annotations, errors-as-results, curated non-overlapping tools.
 - **Safety:** the deterministic policy enforced server-side, least-privilege scoping, idempotent writes, secrets never in code/logs/bundle, **all dynamic console fields HTML-escaped** (DOM-XSS hardened).
-- **Observability/eval:** OTel-shaped tracing (the console stream), Zod validation at every boundary, end-state evaluation, routing-contract tests, AI Gateway analytics.
+- **Observability/eval:** structured per-run tracing (traceId on every event; the console stream), Zod validation at every boundary, end-state evaluation, routing-contract tests, AI Gateway analytics.
 - **Model/platform:** tiered models, graceful degradation, mock-now/real-ready, per-run isolation, zero-build edge deploy.
 
 ---

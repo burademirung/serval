@@ -1,21 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AnthropicTool } from "./mcp-tools";
 
-/** Minimal env shape needed by this module (superset of what wrangler generates). */
-interface AnthropicEnv {
-  ANTHROPIC_API_KEY: string;
-  CF_ACCOUNT_ID?: string;
-  GATEWAY_ID?: string;
-}
-
-export function makeAnthropic(env: AnthropicEnv): Anthropic {
+export function makeAnthropic(env: Pick<Env, "ANTHROPIC_API_KEY" | "CF_ACCOUNT_ID" | "GATEWAY_ID">): Anthropic {
   const base = env.CF_ACCOUNT_ID && env.GATEWAY_ID
     ? `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/${env.GATEWAY_ID}/anthropic`
     : undefined; // fall back to direct Anthropic if gateway vars are absent
   return new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL: base });
 }
 
-export interface ToolCall { name: string; input: Record<string, unknown>; }
+export function effortSpread(effort?: string): Record<string, unknown> {
+  return effort ? { output_config: { effort } } : {};
+}
+
 export type CallTool = (name: string, input: Record<string, unknown>) => Promise<{ text: string; isError: boolean }>;
 
 export interface LoopResult { finalText: string; calls: { name: string; ok: boolean }[]; }
@@ -31,6 +27,7 @@ export async function runToolLoop(opts: {
   maxSteps?: number;
   maxTokens?: number;
   effort?: string;
+  signal?: AbortSignal;
 }): Promise<LoopResult> {
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: opts.userPrompt }];
   const calls: { name: string; ok: boolean }[] = [];
@@ -44,8 +41,8 @@ export async function runToolLoop(opts: {
       tools: opts.tools as unknown as Anthropic.Tool[],
       messages,
       // Optional reasoning-effort knob; only sent when configured (off by default).
-      ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
-    } as Anthropic.MessageCreateParamsNonStreaming);
+      ...effortSpread(opts.effort),
+    } as Anthropic.MessageCreateParamsNonStreaming, { signal: opts.signal });
     messages.push({ role: "assistant", content: res.content });
 
     if (res.stop_reason !== "tool_use") {

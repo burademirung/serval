@@ -42,7 +42,7 @@ Each practice is listed as **Practice → Implementation (`file`) → Verificati
 | # | Practice | Status | Implementation | Verification |
 |---|---|---|---|---|
 | 11 | **Orchestrator–workers pattern** — a supervisor decomposes and delegates | ✅ | `SupervisorAgent.stream` delegates to specialist DOs via `getAgentByName()` RPC (`src/agents/supervisor.ts`) | Live runs show delegate → specialist → result |
-| 12 | **Dynamic routing / simplicity gate** — the supervisor decides *which* specialists are needed | ✅ | `route(env, prompt, fallback)` asks the supervisor model for the specialist set: one for single-domain, several only if it spans domains; falls back to the scenario set (`src/agents/supervisor.ts`) | **Verified live:** the triage prompt routes to `[triage]` only; the fan-out prompt routes to `[onboarding, access-review]` |
+| 12 | **Dynamic routing / simplicity gate** — the supervisor decides *which* specialists are needed | ✅ | `route(env, prompt, fallback)` asks the supervisor model for the specialist set: one for single-domain, several only if it spans domains; falls back to the scenario set (`src/agents/supervisor.ts`); routing uses a cheaper model (`MODEL_ROUTER`, defaults to Haiku) and is skipped for single-specialist scenarios | **Verified live:** the triage prompt routes to `[triage]` only; the fan-out prompt routes to `[onboarding, access-review]` |
 | 13 | **4-field delegation contract** — objective, output format, tools, boundaries | ✅ | The `taskSpec` string carries all four fields (`src/agents/supervisor.ts`) | Inspected in code |
 | 14 | **Context isolation** — each agent gets a clean context window | ✅ | Each specialist is a separate Durable Object (fresh per-run instance id); the supervisor never receives transcripts, only `Finding` objects | Architecture-enforced (separate DOs); audit confirmed |
 | 15 | **Distilled returns** — specialists return summaries + references, not payloads | ✅ | `Finding` = summary + actions + references; the prompt says "IDs in references, never raw payloads" (`src/lib/schemas.ts`, `base-specialist.ts`) | Schema + prompt both enforce it |
@@ -87,7 +87,7 @@ The system was audited adversarially. **No critical or high code vulnerability**
 - **Bounded everything** — tool loops (`maxSteps`), token budgets (`maxTokens`), one-level delegation, a fixed scenario→specialist fallback set. No unbounded recursion or fan-out.
 - **Graceful degradation** — synthesis falls back to a deterministic merge on model failure; routing falls back to the scenario set; Finding parsing falls back after one re-ask. The SSE `start()` is wrapped in `try/catch/finally` that always closes the stream and emits a contained `error` event.
 - **Input validation at every boundary** — Zod schemas on all MCP tool inputs; the untrusted LLM `Finding` JSON is validated with `FindingSchema.parse`.
-- **Type safety** — the whole codebase passes `tsc --noEmit` (strict, `noUncheckedIndexedAccess`); SDK-shape risk is isolated to two files with explicit casts at the verified boundaries.
+- **Type safety** — the whole codebase passes `tsc --noEmit` (strict, `noUncheckedIndexedAccess`); SDK-shape risk is isolated to three files (`src/lib/anthropic.ts`, `src/lib/mcp-tools.ts`, `src/agents/supervisor.ts`) with explicit casts at the verified boundaries.
 
 ---
 

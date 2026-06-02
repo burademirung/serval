@@ -171,6 +171,8 @@ serval-orchestrator/
     └── eval/scenarios.eval.ts     # gated end-state evals (RUN_EVALS)
 ```
 
+> **NOTE (as-built):** as-built files differ — src/mcp/operations.ts was added; tests are tests/mcp-tools.test.ts (not serval-mcp.test.ts) and tests/eval/scenarios.test.ts (not scenarios.eval.ts).
+
 ---
 
 ## 6. Agents, models & tool scoping (least privilege)
@@ -191,6 +193,8 @@ serval-orchestrator/
 - **Anthropic-native knobs:** `effort` (supervisor `xhigh`, specialists `high`) and
   adaptive thinking passed through `@anthropic-ai/sdk` where supported (feature-flag
   guarded; degrade gracefully if the gateway/model rejects them).
+
+> **NOTE (as-built):** effort is a single optional env var (CLAUDE_EFFORT) applied uniformly and off by default; per-agent effort levels were not implemented.
 
 ---
 
@@ -231,6 +235,8 @@ deferred for the PoC (§14).
 - Extends `McpAgent`; `server = new McpServer({name:"serval",version})`; registers
   **12 tools** in `init()` via `server.registerTool(name, {description, inputSchema,
   outputSchema, annotations}, handler)`.
+
+> **NOTE (as-built):** outputSchema is not registered; tools return structuredContent, validated client-side with Zod.
 - **MCP spec 2025-11-25:** handlers return `content` (JSON text, back-compat) **and**
   `structuredContent` (validated against `outputSchema`); business/validation errors
   as `{ isError: true }` (not thrown); **annotations** (`readOnlyHint` on reads;
@@ -285,6 +291,8 @@ All 40 from v2 still apply; the platform-specific mapping:
   **AI Gateway** analytics. End-state evals (gated). **AI Gateway** provides
   caching, retries, cost tracking, and mid-inference reconnect. Per-agent model
   tiers; `effort`/adaptive thinking where supported; env-bumpable model IDs.
+
+> **NOTE (as-built):** event names are custom (run_start/delegate/tool_call/tool_result/synthesis/done/error) with a camelCase traceId per run — inspired by OTel-GenAI, not spec-compliant.
 
 **Cloudflare-native correctness (must-follow)**
 - `compatibility_flags: ["nodejs_compat"]`; all agent/McpAgent classes in

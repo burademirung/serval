@@ -25,7 +25,8 @@
     "SERVAL_MODE": "mock",
     "MODEL_SUPERVISOR": "claude-opus-4-8",
     "MODEL_SONNET": "claude-sonnet-4-6",
-    "MODEL_HAIKU": "claude-haiku-4-5"
+    "MODEL_HAIKU": "claude-haiku-4-5",
+    "MODEL_ROUTER": "claude-haiku-4-5"
   },
   "observability": { "enabled": true }
 }

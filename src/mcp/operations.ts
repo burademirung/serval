@@ -56,7 +56,8 @@ export const operations = {
   },
   create_access_request: (s: Store, a: { userId: string; resource: string; scope: "read" | "write" | "admin"; isProduction?: boolean; idempotencyKey?: string }): OpResult => {
     const k = a.idempotencyKey && "acc:" + a.idempotencyKey;
-    if (k && s.idempo[k]) return ok(s.accessRequests.find((x) => x.id === s.idempo[k]));
+    const existing = k ? s.idempo[k] : undefined;
+    if (existing) return ok(s.accessRequests.find((x) => x.id === existing));
     const id = `ACC-${s.accessRequests.length + 100}`;
     const rec: AccessRequest = { id, userId: a.userId, resource: a.resource, scope: a.scope, isProduction: a.isProduction ?? false, status: "pending" };
     s.accessRequests.push(rec);
@@ -65,7 +66,8 @@ export const operations = {
   },
   create_ticket: (s: Store, a: { subject: string; requester: string; priority?: Ticket["priority"]; idempotencyKey?: string }): OpResult => {
     const k = a.idempotencyKey && "tck:" + a.idempotencyKey;
-    if (k && s.idempo[k]) return ok(s.tickets.find((x) => x.id === s.idempo[k]));
+    const existing = k ? s.idempo[k] : undefined;
+    if (existing) return ok(s.tickets.find((x) => x.id === existing));
     const id = `TCK-${++s.seq}`;
     const rec: Ticket = { id, subject: a.subject, status: "open", priority: a.priority ?? "medium", requester: a.requester, messages: [] };
     s.tickets.push(rec);
