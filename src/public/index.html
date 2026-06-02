@@ -143,7 +143,7 @@
 
   .log{font-family:var(--mono);font-size:12.5px;line-height:1.75;padding:18px 22px;overflow:auto;max-height:440px}
   .log::-webkit-scrollbar{width:10px}.log::-webkit-scrollbar-thumb{background:var(--raise);border-radius:8px;border:3px solid var(--ink-2)}
-  .log:empty::after{content:"// select a scenario to dispatch the orchestrator";color:var(--faint)}
+  .log:empty::after{content:"// orchestration trace will appear here — select a scenario above to dispatch the supervisor";color:var(--faint);font-style:italic}
   .row{padding:1px 0;white-space:pre-wrap;animation:slide .22s ease-out;color:var(--muted)}
   .row b{color:var(--text);font-weight:500}
   .row[data-l="run_start"]{color:var(--blue)} .row[data-l="run_start"] b{color:var(--blue)}
@@ -152,8 +152,22 @@
   .row[data-l="synthesis"]{color:var(--gold-2)}
   .row[data-l="done"]{color:var(--ok)} .row[data-l="done"] b{color:var(--ok)}
   .row[data-l="error"]{color:var(--err)}
-  .answer{margin-top:10px;padding:14px 16px;border-left:2px solid var(--gold);background:rgba(244,183,64,.05);
-    border-radius:0 10px 10px 0;color:var(--text);white-space:pre-wrap;font-family:var(--body);font-size:14px;line-height:1.6}
+  .answer{margin-top:10px;padding:18px 22px;border-left:2px solid var(--gold);background:rgba(244,183,64,.05);
+    border-radius:0 10px 10px 0;color:var(--text);font-family:var(--body);font-size:14px;line-height:1.7;
+    overflow-wrap:break-word;word-break:break-word}
+  /* markdown rendering inside .answer */
+  .answer h1,.answer h2,.answer h3{font-family:var(--display);font-weight:600;letter-spacing:-.015em;color:var(--gold-2);margin:18px 0 8px;line-height:1.15}
+  .answer h1{font-size:20px} .answer h2{font-size:17px} .answer h3{font-size:15px;color:var(--gold)}
+  .answer p{margin:0 0 10px}
+  .answer p:last-child{margin-bottom:0}
+  .answer strong{color:var(--text);font-weight:600}
+  .answer em{font-style:italic;color:var(--muted)}
+  .answer code{font-family:var(--mono);font-size:12px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--teal)}
+  .answer ul,.answer ol{margin:6px 0 10px;padding-left:22px}
+  .answer li{margin-bottom:3px}
+  .answer ul li{list-style:disc}
+  .answer ol li{list-style:decimal}
+  .answer hr{border:none;border-top:1px solid var(--line);margin:14px 0}
   @keyframes slide{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
   .scenarios{display:flex;gap:11px;flex-wrap:wrap;margin-bottom:22px}
   .chip{font-family:var(--mono);font-size:13px;border:1px solid var(--line-2);background:var(--surface);
@@ -350,9 +364,9 @@
   <p class="slead reveal">The hard part of a multi-agent system is coordination and context. Here, each agent is an independently-addressable Durable Object, so context isolation is enforced by the <em>runtime</em> — not by prompt discipline. The supervisor holds only references and distilled findings; specialists never leak their transcripts upward.</p>
 
   <div class="diagram reveal">
-    <div class="d-row"><div class="node sup" style="min-width:280px"><div class="t">Supervisor Agent · Durable Object</div><div class="d">plans · simplicity-gates · delegates via getAgentByName() RPC · synthesizes with opus-4-8</div></div></div>
+    <div class="d-row"><div class="node sup" style="min-width:280px"><div class="t">Supervisor Agent · Durable Object</div><div class="d">plans · simplicity-gates · cheap routing via haiku · delegates via getAgentByName() RPC · synthesizes with opus-4-8</div></div></div>
     <div class="d-spine"></div>
-    <div class="d-cap">parallel fan-out · Promise.all</div>
+    <div class="d-cap">resilient parallel fan-out · Promise.allSettled · per-specialist 45 s timeout</div>
     <div class="d-rail"></div>
     <div class="d-spine"></div>
     <div class="specs">
@@ -394,7 +408,7 @@
     <div class="card"><span class="tag">runtime</span><div class="ic">Cloudflare</div><h3>Agents SDK on Durable Objects</h3><p>Supervisor + specialists + the MCP backend are all Durable Objects. RPC, SQLite state, hibernation, and edge streaming come for free.</p></div>
     <div class="card"><span class="tag">protocol</span><div class="ic">MCP · 2025-11-25</div><h3>McpAgent backend</h3><p>The Serval mock speaks the latest MCP — <span class="mono">structuredContent</span> results, <span class="mono">readOnlyHint</span>/<span class="mono">destructiveHint</span> annotations, and <span class="mono">isError</span> results the model can recover from.</p></div>
     <div class="card"><span class="tag">model</span><div class="ic">Anthropic</div><h3>Claude via AI Gateway</h3><p><span class="mono">@anthropic-ai/sdk</span> routed through Cloudflare AI Gateway: caching, retries, cost tracking, and reconnect buffering — with a hand-rolled, fully-traced tool loop.</p></div>
-    <div class="card"><span class="tag">orchestration</span><div class="ic">Pattern</div><h3>Supervisor / workers</h3><p>Dynamic decomposition, a 4-field delegation contract, a simplicity gate, and parallel fan-out via <span class="mono">getAgentByName()</span> + <span class="mono">Promise.all</span>.</p></div>
+    <div class="card"><span class="tag">orchestration</span><div class="ic">Pattern</div><h3>Supervisor / workers</h3><p>Dynamic decomposition, a 4-field delegation contract, a simplicity gate, cheap routing via Haiku for single-domain requests, and resilient fan-out via <span class="mono">getAgentByName()</span> + <span class="mono">Promise.allSettled</span> — one specialist failing never kills the run.</p></div>
     <div class="card"><span class="tag">interface</span><div class="ic">Edge SSE</div><h3>Streaming over the edge</h3><p>The supervisor returns a <span class="mono">ReadableStream</span> of trace events — no duration limit on Workers — rendered live in this console.</p></div>
     <div class="card"><span class="tag">quality</span><div class="ic">TDD</div><h3>Typed &amp; tested</h3><p>Zod contracts at every boundary, pure tool operations unit-tested, scenario routing guarded, and a deterministic access policy with its own suite.</p></div>
   </div>
@@ -410,7 +424,7 @@
       <h3><span class="gn">A</span> Orchestration</h3>
       <div class="bp"><span class="chk">✓</span><div><span class="tt">Orchestrator–workers pattern</span><span class="ex">A supervisor dynamically decomposes each request and delegates to worker agents over RPC.</span></div></div>
       <div class="bp"><span class="chk">✓</span><div><span class="tt">4-field delegation contract</span><span class="ex">Every task spec carries objective, output format, tool guidance, and explicit boundaries — the #1 fix for agents duplicating or missing work.</span></div></div>
-      <div class="bp"><span class="chk">✓</span><div><span class="tt">Simplicity gate</span><span class="ex">Single-domain requests use one specialist; the system fans out only when work genuinely spans domains.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Simplicity gate + cheap routing</span><span class="ex">A Haiku model (MODEL_ROUTER) classifies intent cheaply; single-domain requests skip fan-out entirely. Full fan-out only when work genuinely spans domains.</span></div></div>
       <div class="bp"><span class="chk">✓</span><div><span class="tt">Effort scaled to complexity</span><span class="ex">Per-agent step caps; a strong supervisor with cheaper specialist leaves.</span></div></div>
       <div class="bp"><span class="chk">✓</span><div><span class="tt">Verbatim forwarding</span><span class="ex">Specialist findings pass through with fidelity where it matters — no telephone-game distortion.</span></div></div>
     </div>
@@ -454,7 +468,7 @@
     <div class="bp-group">
       <h3><span class="gn">F</span> Model &amp; platform controls</h3>
       <div class="bp"><span class="chk">✓</span><div><span class="tt">Tiered model selection</span><span class="ex">Opus supervisor, Sonnet/Haiku specialists — model IDs in env, bumpable without code.</span></div></div>
-      <div class="bp"><span class="chk">✓</span><div><span class="tt">Graceful degradation</span><span class="ex">Synthesis falls back to a deterministic merge if the model call fails.</span></div></div>
+      <div class="bp"><span class="chk">✓</span><div><span class="tt">Graceful degradation</span><span class="ex">Fan-out uses <span class="mono">Promise.allSettled</span> with per-specialist 45 s timeouts — a failing specialist's error is surfaced and skipped; the run continues. Synthesis falls back to a deterministic merge if the model call fails.</span></div></div>
       <div class="bp"><span class="chk">✓</span><div><span class="tt">Mock-now / real-ready</span><span class="ex">A single <span class="mono">SERVAL_MODE</span> flip points the MCP client at real Serval.</span></div></div>
       <div class="bp"><span class="chk">✓</span><div><span class="tt">Per-run isolation</span><span class="ex">Fresh specialist instances per run keep each demo clean and reproducible.</span></div></div>
       <div class="bp"><span class="chk">✓</span><div><span class="tt">Zero-build edge deploy</span><span class="ex">Wrangler bundles and ships the whole stack — Worker, Durable Objects, and this page.</span></div></div>
@@ -543,8 +557,106 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
   }
   function answer(text){
     const div = document.createElement("div");
-    div.className = "answer"; div.textContent = text;
+    div.className = "answer";
+    div.innerHTML = renderMd(text);
     log.appendChild(div); log.scrollTop = log.scrollHeight;
+  }
+
+  // Lightweight, XSS-safe markdown renderer.
+  // STEP 1: escape all HTML in the raw string (never trust LLM output).
+  // STEP 2: apply markdown transforms on the already-escaped result,
+  //         injecting only known-safe HTML tags we construct ourselves.
+  function renderMd(raw) {
+    // --- 1. HTML-escape the entire input first ---
+    const escaped = String(raw ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+    // --- 2. Apply markdown transforms on the escaped string ---
+    const lines = escaped.split("\n");
+    const out = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // Headings: ### ## #
+      const hm = line.match(/^(#{1,3})\s+(.*)/);
+      if (hm) {
+        const lvl = hm[1].length;
+        out.push("<h" + lvl + ">" + inlineMd(hm[2]) + "</h" + lvl + ">");
+        i++; continue;
+      }
+
+      // Horizontal rule: --- or ***
+      if (/^(?:---+|\*\*\*+)\s*$/.test(line)) {
+        out.push("<hr>");
+        i++; continue;
+      }
+
+      // Unordered list item: - or *
+      if (/^[-*]\s+/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
+          items.push("<li>" + inlineMd(lines[i].replace(/^[-*]\s+/, "")) + "</li>");
+          i++;
+        }
+        out.push("<ul>" + items.join("") + "</ul>");
+        continue;
+      }
+
+      // Ordered list item: 1.
+      if (/^\d+\.\s+/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+          items.push("<li>" + inlineMd(lines[i].replace(/^\d+\.\s+/, "")) + "</li>");
+          i++;
+        }
+        out.push("<ol>" + items.join("") + "</ol>");
+        continue;
+      }
+
+      // Blank line — paragraph break
+      if (line.trim() === "") {
+        // absorb consecutive blank lines
+        while (i < lines.length && lines[i].trim() === "") i++;
+        out.push(""); // separator handled by paragraph wrapping below
+        continue;
+      }
+
+      // Regular paragraph: accumulate consecutive non-empty, non-special lines
+      const para = [];
+      while (
+        i < lines.length &&
+        lines[i].trim() !== "" &&
+        !/^#{1,3}\s/.test(lines[i]) &&
+        !/^[-*]\s+/.test(lines[i]) &&
+        !/^\d+\.\s+/.test(lines[i]) &&
+        !/^(?:---+|\*\*\*+)\s*$/.test(lines[i])
+      ) {
+        para.push(inlineMd(lines[i]));
+        i++;
+      }
+      if (para.length) out.push("<p>" + para.join("<br>") + "</p>");
+    }
+
+    return out.join("\n");
+  }
+
+  // Inline markdown transforms (on already-escaped text)
+  function inlineMd(s) {
+    return s
+      // Inline code: `code` — must come before bold/italic to avoid nested confusion
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      // Bold: **text** or __text__
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+      // Italic: *text* or _text_ (single, not adjacent to another * or _)
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/_([^_]+)_/g, "<em>$1</em>");
   }
 
   window.run = function(scenario){

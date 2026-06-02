@@ -13,7 +13,9 @@ when the request genuinely spans domains. Synthesize specialist findings into on
 type Spec = "triage" | "access-review" | "onboarding";
 
 function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
-  return Promise.race([p, new Promise<T>((res) => setTimeout(() => res(onTimeout()), ms))]);
+  let t: ReturnType<typeof setTimeout>;
+  const timer = new Promise<T>((res) => { t = setTimeout(() => res(onTimeout()), ms); });
+  return Promise.race([p, timer]).finally(() => clearTimeout(t));
 }
 
 /** Synthesize specialist findings into a final answer using the supervisor model
@@ -175,6 +177,9 @@ export class SupervisorAgent extends Agent<Env, SupervisorState> {
           controller.close();
         }
       },
+      // Best-effort cancellation on client disconnect: stops the supervisor's own
+      // remaining work (routing/synthesis) at the next phase gate. In-flight specialist
+      // RPC calls run to completion or their 45s timeout (DO RPC carries no abort signal).
       cancel() {
         aborted = true;
       },

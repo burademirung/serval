@@ -84,8 +84,10 @@ The system was audited adversarially. **No critical or high code vulnerability**
 ## Part 4 — Robustness
 
 - **Idempotent writes** — `create_ticket` / `create_access_request` honor an `idempotencyKey` so retries don't double-write (`src/mcp/operations.ts`). **Verified by unit test.**
-- **Bounded everything** — tool loops (`maxSteps`), token budgets (`maxTokens`), one-level delegation, a fixed scenario→specialist fallback set. No unbounded recursion or fan-out.
-- **Graceful degradation** — synthesis falls back to a deterministic merge on model failure; routing falls back to the scenario set; Finding parsing falls back after one re-ask. The SSE `start()` is wrapped in `try/catch/finally` that always closes the stream and emits a contained `error` event.
+- **Bounded everything** — tool loops (`maxSteps`), token budgets (`maxTokens`), one-level delegation, a fixed scenario→specialist fallback set, and a **45 s per-specialist timeout** (a stuck specialist resolves to an error Finding rather than hanging the run). No unbounded recursion or fan-out.
+- **Resilient fan-out** — specialists run under **`Promise.allSettled`**: if one fails or times out, its slot becomes an error Finding and the run still synthesizes over the survivors (one failure never discards the whole run). Specialist DO instances are **stable per type** (no unbounded instance creation).
+- **Best-effort cancellation** — the SSE `ReadableStream.cancel()` sets an abort flag checked at phase gates, so a client disconnect stops the supervisor's remaining routing/synthesis work. (In-flight specialist RPC calls run to completion or their timeout — DO RPC carries no abort signal.)
+- **Graceful degradation** — synthesis falls back to a deterministic merge on model failure; routing falls back to the scenario set; Finding parsing falls back after one re-ask. The SSE `start()` is wrapped in `try/catch/finally` that always closes the stream and emits a contained, **non-leaking** `error` event ("Run failed"; details logged server-side only).
 - **Input validation at every boundary** — Zod schemas on all MCP tool inputs; the untrusted LLM `Finding` JSON is validated with `FindingSchema.parse`.
 - **Type safety** — the whole codebase passes `tsc --noEmit` (strict, `noUncheckedIndexedAccess`); SDK-shape risk is isolated to three files (`src/lib/anthropic.ts`, `src/lib/mcp-tools.ts`, `src/agents/supervisor.ts`) with explicit casts at the verified boundaries.
 
@@ -96,7 +98,7 @@ The system was audited adversarially. **No critical or high code vulnerability**
 How we *know* the above holds — not just assert it:
 
 1. **Type checking** — `npm run typecheck` (`tsc --noEmit`, strict) passes clean.
-2. **Unit tests** — `npm test`: 16 passing, 1 skipped (`@cloudflare/vitest-pool-workers`):
+2. **Unit tests** — `npm test`: 22 passing, 1 skipped (`@cloudflare/vitest-pool-workers`):
    - `tests/policy.test.ts` — the deterministic access policy (5 cases).
    - `tests/mcp-tools.test.ts` — pure tool operations incl. idempotency, the error sentinel, **and the policy-enforcement downgrade** (write/admin → escalate); plus MCP→Anthropic tool conversion.
    - `tests/eval/scenarios.test.ts` — scenario routing contract.
