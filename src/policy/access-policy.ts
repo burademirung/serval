@@ -17,6 +17,9 @@ export interface AccessRequestContext {
  * for active users can auto-approve. Order checks so the most restrictive wins.
  */
 export function decideAccess(ctx: AccessRequestContext): { decision: AccessDecision; reason: string } {
-  // TODO(user): implement. Must satisfy tests/policy.test.ts.
-  throw new Error("decideAccess not implemented");
+  if (!ctx.requesterActive) return { decision: "deny", reason: "Requester is inactive" };
+  if (ctx.isAdmin) return { decision: "escalate", reason: "Admin grant needs human approval" };
+  if (ctx.isProduction) return { decision: "escalate", reason: "Production access needs human approval" };
+  if (ctx.scope === "read") return { decision: "approve", reason: "Low-risk read for active user" };
+  return { decision: "escalate", reason: "Non-read access requires review" };
 }
