@@ -547,9 +547,9 @@ record(enforced ? verdict.decision : agentDecision);  <span class="cm">// policy
     const on = (e, f) => es.addEventListener(e, ev => { try { f(JSON.parse(ev.data)); } catch(_){} });
 
     on("run_start", d => add("run_start", "▶ <b>supervisor</b> received: " + esc(d.detail)));
-    on("delegate", d => { setLane(d.agent, 1); add("delegate", "  → <b>delegate</b> to " + d.agent); });
-    on("tool_call", d => add("tool_call", "      · " + d.agent + " → <b>" + d.tool + "</b>" + (d.detail && d.detail!=="-" ? " " + esc(d.detail) : "")));
-    on("tool_result", d => { setLane(d.agent, 2); add("tool_result", "      ✓ " + d.agent + " — " + esc(d.detail||"")); });
+    on("delegate", d => { setLane(d.agent, 1); add("delegate", "  → <b>delegate</b> to " + esc(d.agent)); });
+    on("tool_call", d => add("tool_call", "      · " + esc(d.agent) + " → <b>" + esc(d.tool) + "</b>" + (d.detail && d.detail!=="-" ? " " + esc(d.detail) : "")));
+    on("tool_result", d => { setLane(d.agent, 2); add("tool_result", "      ✓ " + esc(d.agent) + " — " + esc(d.detail||"")); });
     on("synthesis", () => { document.getElementById("lane-supervisor").dataset.on = "1"; add("synthesis", "  ∑ <b>supervisor</b> synthesizing findings…"); });
     on("done", d => {
       shell.classList.remove("running"); shell.classList.add("done");
