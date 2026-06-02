@@ -1,595 +1,405 @@
-# Serval Multi-Agent IT Orchestrator — Design Spec (v2, cutting-edge)
+# Serval Multi-Agent IT Orchestrator — Design Spec (v3, Cloudflare-native)
 
 **Date:** 2026-06-01
-**Status:** Approved design, pre-implementation (v2 — hardened with June-2026 research)
+**Status:** Approved design, pre-implementation (v3 — re-platformed onto Cloudflare)
 **Author:** Brainstormed with user (vlad@degenito.ai)
 
-> v2 incorporates a second, deeper research pass targeting the **June-2026 state of
-> the art**: current Claude model IDs + `effort`, the Agent SDK's native structured
-> outputs / compaction / memory / tool-search, MCP spec `2025-11-25`, context
-> engineering, OpenTelemetry GenAI observability, and zero-build native-TypeScript
-> Node tooling. Every applicable best practice is mapped to an implementation in §8.
+> **v3 supersedes v2.** New hard requirement: the whole solution **should deploy on
+> Cloudflare**. This invalidated v2's core runtime (the Claude Agent SDK cannot run
+> on Workers — it spawns a CLI subprocess and needs a filesystem). v3 re-architects
+> onto Cloudflare-native primitives: the **Agents SDK** (agents = Durable Objects),
+> **`McpAgent`** for the Serval backend, **`@anthropic-ai/sdk` via AI Gateway** for
+> Claude, **Workers Static Assets** + **SSE** for the console. The product intent,
+> orchestration model (supervisor + specialists), best practices, the deterministic
+> access-policy user contribution, the Conduit-style console, and mock-now/real-ready
+> all carry over. v1/v2 are retained in git history.
 
 ---
 
 ## 1. Purpose & Goal
 
-Build a **showcase-quality, proof-of-concept multi-agent AI orchestrator** that
-operates against [Serval](https://www.serval.com/)'s ITSM platform through its
-Model Context Protocol (MCP) interface, demonstrating **supervisor + specialists
-orchestration** on the current technology frontier.
+A **showcase-quality, Cloudflare-deployable, proof-of-concept multi-agent AI
+orchestrator** that operates [Serval](https://www.serval.com/)'s ITSM platform
+through MCP. A Supervisor agent routes IT work to scoped specialist agents
+(Triage, Access-Review, Onboarding); each operates Serval's system of record via
+MCP tools; the supervisor synthesizes a unified answer and streams the live
+orchestration trace to a visual web console.
 
-An Orchestrator agent routes each request to scoped specialist agents (Triage,
-Access-Review, Onboarding), each acting on Serval's system of record via MCP
-tools, then synthesizes a unified answer.
-
-The PoC must:
-
-- Demonstrate real multi-agent orchestration (dynamic fan-out + synthesis), not a
-  single conversational agent.
-- Run **immediately with no Serval account** via a faithful in-memory mock MCP
-  backend, and flip to the **real Serval MCP server** with only an env/credential
-  change ("mock now, real-ready").
-- **Embody the June-2026 cutting edge** of agent implementation, orchestration,
-  context engineering, observability, and tooling (this is an explicit goal — the
-  project is a showcase of state-of-the-art technologies).
-- Include a **visual representation** (a Conduit-style streaming demo web console)
-  driven by the same orchestration core (§13).
+Goals:
+- Real multi-agent orchestration (dynamic fan-out + synthesis) — **each specialist
+  is its own Durable Object**, delegated to via RPC, fanned out in parallel.
+- **Deploys on Cloudflare** end-to-end (Workers + Durable Objects + Static Assets;
+  `wrangler deploy`).
+- Runs **with no real Serval account** via a faithful in-Worker **mock Serval MCP
+  server** (`McpAgent`); flips to **real Serval** by env (the specialists' MCP
+  client targets the mock binding or the live Serval URL).
+- **Showcase of the June-2026 cutting edge** across agents, MCP, context
+  engineering, observability, and the Cloudflare platform.
+- A **visual representation** (Conduit-style SSE-streamed console) driven by the
+  same orchestration core.
 
 ### Non-goals (YAGNI)
 
-- No production deployment, hosted auth server, or persistence beyond in-memory +
-  local memory files.
-- No real Serval credentials required to run the demo.
-- No code-execution-with-MCP sandbox (documented as the scaling path in §17, not
-  built — see rationale there).
-- No live Serval calls from the browser demo (mock only) so it always runs.
+- No real Serval credentials required for the demo (mock by default).
+- No OAuth on the mock MCP server (authless; real Serval uses Bearer).
+- No code-execution-with-MCP sandbox (documented scaling path).
+- No Cloudflare Containers / Sandbox SDK / Managed Agents (only needed if we kept
+  the Claude Agent SDK — we don't).
 
 ---
 
-## 2. Background: Serval & its API (researched)
+## 2. Background
 
-Serval is an AI-native ITSM platform (founded April 2024, San Francisco; CEO Jake
-Stauch, CTO Alex McLeod; $127M raised, $1B valuation Dec 2025). Its own
-architecture is multi-agent (Help Desk Agent + Automation/Builder Agent), which
-makes a multi-agent orchestrator a natural showcase.
+**Serval** — AI-native ITSM (founded Apr 2024, SF; CEO Jake Stauch, CTO Alex
+McLeod; $127M raised, $1B valuation Dec 2025). Exposes a public REST API and an
+**MCP server** (`https://public.api.serval.com/mcp/`, Streamable HTTP, OAuth 2.1).
+"Every public API endpoint is auto-available as an MCP tool" (`snake_case`). No
+public sandbox → we mock it. The mock mirrors Serval's tool surface so agents
+behave identically against mock or real Serval. Serval's own architecture is
+multi-agent, making this a fitting showcase.
 
-Serval exposes a **public REST API** and an **MCP server**:
-
-- REST base: `https://public.api.serval.com/v2/`
-- MCP endpoint: `https://public.api.serval.com/mcp/` (Streamable HTTP transport)
-- Auth: OAuth2 client-credentials (REST) / OAuth 2.1 browser flow (MCP). API
-  credentials come from the workspace admin dashboard. **No public sandbox
-  exists** — hence the mock.
-- MCP design: "every public API endpoint is automatically available as an MCP
-  tool"; `snake_case` tools (`list_tickets`, `create_ticket`, `get_user`,
-  `list_workflows`, …); same permissions/rate-limits as REST.
-
-The mock mirrors this tool surface so agents behave identically against mock or
-real Serval.
+**Why Cloudflare fits:** the reference console the user supplied is itself a Worker;
+Cloudflare's Agents SDK + `McpAgent` + Durable Objects are purpose-built for exactly
+this (stateful agents, remote MCP servers, streaming) — a stronger platform story
+than a local Node process.
 
 ---
 
-## 3. Cutting-edge technology showcase
+## 3. Platform decision record (the pivot)
 
-The frontier stack this PoC demonstrates (verified June 2026):
+| Concern | v2 (Node) | v3 (Cloudflare) | Why |
+|---|---|---|---|
+| Agent runtime | Claude Agent SDK (subagents) | **Cloudflare Agents SDK** (`agents`); agents = Durable Objects | Claude Agent SDK spawns a CLI subprocess + needs a filesystem — **cannot run on Workers** |
+| Multi-agent | SDK `agents` map + `Agent` tool | **Supervisor DO → specialist DOs via `getAgentByName()` RPC**, parallel `Promise.all` | Idiomatic CF multi-agent; each specialist independently addressable + stateful |
+| Serval backend | stdio MCP server | **`McpAgent`** (Durable Object) — Streamable HTTP `/mcp` + internal RPC transport | Workers are HTTP-only; no stdio |
+| LLM access | Agent SDK manages model | **`@anthropic-ai/sdk` → AI Gateway**, hand-rolled tool loop | Fetch-based, Workers-compatible; AI Gateway adds caching/retries/observability + reconnect buffering |
+| Web/SSE | `node:http` server | **Worker `ReadableStream` SSE** + **Workers Static Assets** | Native to Workers; no duration limit on SSE |
+| Tooling | native TS on Node 25 | **Wrangler + workerd** (esbuild bundling) | The Workers toolchain |
+| Tests | vitest (node) | **`@cloudflare/vitest-pool-workers`** (+ plain vitest for pure fns) | Runs tests in workerd with DO support |
+| Secrets | `--env-file=.env` | **`.dev.vars`** / `wrangler secret put` | Workers secret model |
 
-| Layer | Technology / pattern | Why it's state of the art |
-|---|---|---|
-| Models | **Claude Opus 4.8** (`claude-opus-4-8`) orchestrator, **Sonnet 4.6** (`claude-sonnet-4-6`) + **Haiku 4.5** (`claude-haiku-4-5`) specialists | Latest tier; mixed-tier orchestration (strong supervisor, cheap leaves) |
-| Reasoning | **Adaptive thinking** + **`effort`** knob (`xhigh` orchestrator) | 2026 replacement for manual `budget_tokens` (400s on Opus 4.8) |
-| Agent runtime | **`@anthropic-ai/claude-agent-sdk`** programmatic subagents | Current Agent SDK; isolated-context delegation |
-| Structured output | SDK **`outputFormat` (JSON schema)** + auto re-prompt | Guaranteed-valid specialist results, no manual parsing |
-| Context | **Automatic compaction** + **memory tool** + context editing | Long-horizon reliability; mitigates context rot |
-| Protocol | **MCP spec `2025-11-25`** (`outputSchema`/`structuredContent`, resource links, refined error semantics) | Newest stable MCP revision |
-| Cost/resilience | `fallbackModel`, `maxBudgetUsd`, per-agent `maxTurns`, prompt caching | Production cost + failure controls |
-| Observability | **OpenTelemetry GenAI semantic conventions** (one `trace_id` per run) | 2026 standard for agent tracing |
-| Tooling | **Native TypeScript on Node 25** (type stripping, zero build step) | No tsx/dotenv/nodemon/bundler — Node-native |
-| Web demo | **SSE over `node:http`** + **`:has()` / container queries / view transitions** | Zero-build modern UI, Baseline-2026 CSS |
+**Forced "won't work on Workers" list (designed around):** `@anthropic-ai/claude-agent-sdk`; stdio transport; `node:http`; native-TS type-stripping. **AI-SDK footgun avoided** (n/a — we use `@anthropic-ai/sdk`). **Agent DO classes MUST be in `new_sqlite_classes` migrations** and `compatibility_flags: ["nodejs_compat"]` is required.
 
 ---
 
 ## 4. Architecture
 
 ```
-        ┌──────────────┐
-        │ Orchestrator │  claude-opus-4-8, effort=xhigh, permissionMode=default
-        │  (LEAN)      │  - holds plan + references only, never raw specialist output
-        │  routes +    │  - gates multi-agent behind a complexity heuristic
-        │  synthesizes │  - delegates via Agent tool with the 4-field contract
-        └──────┬───────┘
-     ┌─────────┼──────────┐
-     ▼         ▼          ▼
- ┌───────┐ ┌────────┐ ┌──────────┐
- │Triage │ │Access  │ │Onboarding│   AgentDefinition specialists (isolated context,
- │haiku  │ │Review  │ │ sonnet   │   scoped MCP tools, outputFormat=Zod schema,
- │ 4.5   │ │sonnet  │ │  4.6     │   maxTurns cap). Return distilled findings only.
- └───┬───┘ └───┬────┘ └────┬─────┘
-     └─────────┼───────────┘
-               ▼
-   ┌────────────────────────┐   MCP (stdio mock now / Streamable HTTP+Bearer live)
-   │  Serval MCP backend     │   spec 2025-11-25; tools expose inputSchema +
-   │  ── mock-serval (stdio) │   outputSchema, return structuredContent,
-   │  ── real Serval (http)  │   readOnly/destructive annotations, isError results
-   └────────────────────────┘
-                │
-   Cross-cutting: canUseTool HITL gate · OTel GenAI trace hook · memory file ·
-   compaction · prompt caching · maxBudgetUsd + fallbackModel
+        Workers Static Assets  (src/public/index.html, SPA)
+                 │  GET /            ← served before the Worker
+                 │  GET /api/run?scenario=…  (SSE)
+                 ▼
+        ┌──────────────── Worker (default fetch) ───────────────┐
+        │  routeAgentRequest()  ·  /mcp → ServalMCP.serve        │
+        │  /api/run → SupervisorAgent (SSE)                      │
+        └───────────────────────┬───────────────────────────────┘
+                                ▼
+              SupervisorAgent  (Durable Object, claude-opus-4-8)
+                • plans + simplicity-gates + synthesizes
+                • streams OTel-style trace to the browser via SSE
+                • getAgentByName() RPC → specialists, Promise.all fan-out
+            ┌───────────────┬───────┴────────┬───────────────┐
+            ▼               ▼                ▼
+     TriageAgent     AccessReviewAgent   OnboardingAgent   (Durable Objects)
+   haiku-4-5           sonnet-4-6           sonnet-4-6
+     • each runs its OWN Anthropic Messages tool-loop (via AI Gateway)
+     • each scoped to its slice of Serval MCP tools (least privilege)
+     • returns a distilled, schema-validated Finding (no transcripts)
+            └───────────────┴────────────────┘
+                            │  this.mcp client  (RPC transport, no public hop)
+                            ▼
+                  ServalMCP  (McpAgent Durable Object)
+                    • 12 Serval-faithful tools (inputSchema + outputSchema +
+                      structuredContent + annotations + isError)
+                    • mock seeds in DO state
+                    • ALSO public at /mcp (Streamable HTTP) for Inspector/Claude
+                            │
+              real-ready:  SERVAL_MODE=live → specialists' MCP client targets
+              https://public.api.serval.com/mcp/ (Bearer) instead of the binding
 ```
 
-### Units (each independently understandable & testable)
+### Worker / Durable Object inventory
 
-1. **`src/mock-serval/server.ts`** — standalone stdio MCP server
-   (`@modelcontextprotocol/sdk` v1.x, spec `2025-11-25`) exposing Serval-faithful
-   tools (input+output schemas, `structuredContent`, annotations, `isError`),
-   backed by in-memory seed data.
-2. **`src/agents/orchestrator.ts`** — the lean supervisor: builds the `query()`
-   call, owns the orchestration system prompt (delegation contract, effort/budget
-   heuristics, simplicity gate), wires permissions + tracing + memory.
-3. **`src/agents/specialists.ts`** — the `AgentDefinition` map: three specialists,
-   each with its own `description` (routing signal), `prompt`, scoped `tools`,
-   `model`, `maxTurns`, and `outputFormat` schema.
-4. **`src/config/connection.ts`** — the only place that decides mock vs live and
-   produces the `mcpServers` config + `allowedTools`.
-5. **`src/policy/access-policy.ts`** — deterministic access decision function
-   (USER CONTRIBUTION). Pure TS, no LLM.
-6. **`src/lib/permissions.ts`** — `canUseTool` human-in-the-loop gate.
-7. **`src/lib/trace.ts`** — OpenTelemetry-GenAI-shaped structured trace emitter
-   (one `trace_id` per run; `invoke_agent` / `execute_tool` / MCP spans). Also the
-   event source for the web console.
-8. **`src/lib/schemas.ts`** — Zod schemas (→ JSON Schema) for specialist
-   structured findings and the access-decision shape.
-9. **`src/index.ts`** — CLI entry (chat loop).
-10. **`src/web/server.ts`** — `node:http` + SSE server that runs the orchestrator
-    against the mock and streams the live trace to the browser.
-11. **`src/web/public/index.html`** — single-page visual representation (the
-    Conduit-style demo console + architecture page).
-
----
-
-## 5. Agents, models & tool scoping (least privilege)
-
-| Agent | Model (June 2026) | `effort` | Role | Allowed Serval tools |
-|---|---|---|---|---|
-| **Orchestrator** | `claude-opus-4-8` | `xhigh` + adaptive thinking | Route, delegate, synthesize; holds conversation | *(none direct — delegates only; has `Agent`)* |
-| **Triage** | `claude-haiku-4-5` | n/a (Haiku has no adaptive thinking) | Classify/prioritize tickets, draft responses | `list_tickets`, `get_ticket`, `update_ticket`, `post_message` |
-| **Access-Review** | `claude-sonnet-4-6` | `high` | Evaluate JIT access requests vs policy | `list_access_requests`, `get_access_request`, `get_user`, `review_access_request` |
-| **Onboarding** | `claude-sonnet-4-6` | `high` | New-hire: tickets + access + workflow | `create_ticket`, `create_access_request`, `list_workflows`, `run_workflow`, `get_user` |
-
-- Through the SDK, tools are referenced as `mcp__serval__<tool>`. The
-  orchestrator's `allowedTools` includes `"Agent"` (required to enable delegation)
-  but **no** `mcp__serval__*` — it acts only through specialists.
-- **Tool search is disabled** (`ENABLE_TOOL_SEARCH: "false"`): our tool set is < 10
-  (search hurts below ~10 tools) and Haiku 4.5 can't use it.
-- **Resilience defaults:** `fallbackModel` set on the orchestrator; global
-  `maxBudgetUsd` and per-agent `maxTurns` cap runaway cost/loops.
-
----
-
-## 6. Orchestration flow (context-engineered)
-
-1. User submits a request (CLI or web console).
-2. The **orchestrator persists its plan to a memory file** before delegating (so it
-   survives compaction/truncation).
-3. **Simplicity gate:** trivial single-domain reads dispatch one specialist;
-   compound requests fan out to multiple. The orchestrator **scales effort to
-   complexity** (1 specialist for simple, 2–4 for compound) — encoded as a
-   heuristic in its system prompt, not a rigid script ("right altitude").
-4. For each specialist, the orchestrator issues a delegation carrying the **4-field
-   contract**: objective, required output format, tool/source guidance, task
-   boundaries. Critical instructions are placed at the **start and end** of the
-   delegation prompt (lost-in-the-middle mitigation).
-5. Each **specialist** runs its own isolated agent loop against the Serval MCP
-   backend, then returns a **distilled, schema-validated finding** (SDK
-   `outputFormat`) — a summary + any artifact references, **not** its transcript or
-   raw payloads.
-6. The **lean orchestrator** synthesizes specialist findings (which it holds as
-   references/summaries, never raw tool output) into one answer; forwards
-   specialist content **verbatim** where fidelity matters (avoid the "telephone
-   game").
-7. Any **write tool** (`create_*`, `update_ticket`, `run_workflow`,
-   `review_access_request`) triggers the human-in-the-loop confirmation gate before
-   executing. Write side-effects are **idempotent** (safe under retry).
-
-### Worked example (the orchestration money-shot)
-
-> "Onboard Jane Doe and review her pending access requests."
-
-Orchestrator fans out to **Onboarding** (create onboarding ticket, request standard
-access, kick off onboarding workflow) **and** **Access-Review** (evaluate Jane's
-pending requests against policy), then merges both distilled findings into a clear,
-attributed summary.
-
----
-
-## 7. Mock backend & real-ready swap
-
-- **Mock** (`SERVAL_MODE=mock`, default): `connection.ts` returns
-  `mcpServers: { serval: { command: "node", args: ["src/mock-serval/server.ts"] } }`
-  (Node runs the `.ts` directly — no build).
-- **Live** (`SERVAL_MODE=live`): returns
-  `mcpServers: { serval: { type: "http", url: SERVAL_MCP_URL, headers: { Authorization: "Bearer " + SERVAL_TOKEN } } }`.
-- Both expose **identical tool names/shapes**, so agent prompts and `allowedTools`
-  (`mcp__serval__*`) are unchanged across modes.
-
-### Mock fidelity rules (MCP spec `2025-11-25`)
-
-- Built with `@modelcontextprotocol/sdk` v1.x, `registerTool` taking Zod
-  **`inputSchema` and `outputSchema`**; handlers return **both** a JSON text block
-  (back-compat) and `structuredContent` (validated against `outputSchema`).
-- Identical `snake_case` tool names and shapes to Serval's real API.
-- **Tool annotations** on every tool: `readOnlyHint` for reads;
-  `destructiveHint`/`idempotentHint` for writes.
-- **Error semantics (SEP-1303):** business + input-validation errors returned as
-  `{ isError: true }` results (not thrown), so the agent self-corrects. A
-  deterministic trigger (sentinel ticket ID) forces an error path for testing.
-- **Resource links** for any large payload (return a pointer, not the blob) to keep
-  context lean.
-- Logs go to **stderr only** (stdout is the JSON-RPC channel).
-- Realistic seed data: tickets (varied priority/status incl. a sentinel error one),
-  users (incl. one inactive), pending access requests (incl. one admin/prod-scoped),
-  one onboarding workflow.
-
----
-
-## 8. Best practices implemented (explicit, per user request)
-
-Sourced from Anthropic *Building Effective Agents*, *How we built our multi-agent
-research system*, *Effective context engineering for AI agents*, *Context
-management* (memory tool + context editing), *Code execution with MCP*; the Claude
-Agent SDK TS docs; MCP spec `2025-11-25`; OpenTelemetry GenAI conventions;
-OpenAI/LangChain operational findings; and Node/TypeScript 2026 tooling docs.
-
-### Orchestration & agents
-
-| # | Best practice | Implementation |
+| DO class (`new_sqlite_classes`) | Binding | Responsibility |
 |---|---|---|
-| 1 | Orchestrator-workers (dynamic decomposition) | Main `query()` + `agents` map; delegate via `Agent` tool |
-| 2 | 4-field delegation contract | Mandated in orchestrator system prompt |
-| 3 | Start simple / gate multi-agent | Complexity heuristic; single specialist for simple reads |
-| 4 | Effort scaling to complexity | Per-agent `maxTurns` + scaling rules in prompt |
-| 5 | Least privilege per agent | Scoped `AgentDefinition.tools` (§5) |
-| 6 | Mixed-tier models (strong lead, cheap leaves) | opus orchestrator; sonnet/haiku specialists |
-| 7 | `effort` + adaptive thinking | `xhigh` orchestrator; `high` sonnet specialists |
-| 8 | System prompt at the right "altitude" | Heuristics, not rigid scripts or vague platitudes |
-| 9 | Verbatim forwarding (anti-telephone-game) | Orchestrator forwards specialist text where fidelity matters |
-
-### Context engineering & reliability
-
-| # | Best practice | Implementation |
-|---|---|---|
-| 10 | Lean supervisor (references not payloads) | Orchestrator holds plan + distilled findings only |
-| 11 | Context isolation | Native subagent isolation; self-contained delegation prompt |
-| 12 | Distilled returns | Specialists return summaries/pointers, never transcripts |
-| 13 | Context-rot mitigation | Critical instructions at prompt edges; aggressive distractor filtering |
-| 14 | Compaction for long runs | SDK automatic compaction enabled |
-| 15 | External memory | Orchestrator persists plan to a memory file |
-| 16 | Stopping conditions / resumability | Per-agent + global `maxTurns`, `maxBudgetUsd`; checkpoint plan |
-| 17 | Idempotent side-effects | Write tools safe under retry |
-| 18 | Surface tool failures to the agent | `isError` results fed back so the agent adapts |
-
-### Tools / MCP
-
-| # | Best practice | Implementation |
-|---|---|---|
-| 19 | Faithful mock | Identical names/shapes, seeds, simulated errors |
-| 20 | Structured tool output | `outputSchema` + `structuredContent` (spec 2025-11-25) |
-| 21 | Tool annotations | `readOnlyHint`/`destructiveHint`/`idempotentHint` on every tool |
-| 22 | `isError`, don't throw (SEP-1303) | Mock handlers return error results |
-| 23 | Resource links for big payloads | Pointers, not inlined blobs |
-| 24 | Curated, non-overlapping tools | Minimal per-specialist tool surface |
-
-### Safety / security
-
-| # | Best practice | Implementation |
-|---|---|---|
-| 25 | Human-in-the-loop on writes | `canUseTool` gate in `lib/permissions.ts` |
-| 26 | Never bypass-mode orchestrator | `permissionMode: "default"`; destructive patterns in `disallowedTools` |
-| 27 | Two-layer output safety | Guardrail filter + typed (Zod) validation on every boundary |
-| 28 | Deterministic safety in code | `policy/access-policy.ts` pure function (user contribution) |
-| 29 | Tool-definition pinning | Hash mock tool defs on first load; warn on drift (rug-pull defense) |
-
-### Structured output, observability, eval
-
-| # | Best practice | Implementation |
-|---|---|---|
-| 30 | Native structured outputs | SDK `outputFormat` (Zod→JSON schema) + auto re-prompt |
-| 31 | OTel GenAI observability | `lib/trace.ts`: one `trace_id`, `invoke_agent`/`execute_tool`/MCP spans, token/cost attrs |
-| 32 | End-state eval (default) | `*.eval.ts` scenarios graded on final Serval state |
-| 33 | Small eval set + LLM-judge (offline) | ~6–8 scenarios, single-call rubric judge, gated behind `RUN_EVALS` |
-| 34 | Humans in the eval loop | Manual demo runs alongside automated evals |
-
-### SDK / model controls
-
-| # | Best practice | Implementation |
-|---|---|---|
-| 35 | Model fallback | `fallbackModel` on orchestrator |
-| 36 | Cost cap | `maxBudgetUsd` on the query |
-| 37 | Tool search off for small sets | `ENABLE_TOOL_SEARCH: "false"` |
-| 38 | Prompt caching | Cache tool defs + stable system prompt (1h TTL) |
-| 39 | Stream subagent activity | `forwardSubagentText` for the visual showcase |
-| 40 | Real-ready backend swap | `config/connection.ts` env-driven switch |
-
-### SDK correctness notes (must-follow)
-
-- Package: **`@anthropic-ai/claude-agent-sdk`** (NOT the old `claude-code`).
-- Include **`"Agent"` in `allowedTools`** or subagents never spawn.
-- Subagents cannot nest (one level) — do not give specialists the `Agent` tool.
-- The `Task` tool was renamed **`Agent`** (emitted as `"Agent"`, still `"Task"` in
-  the init tools list + permission denials) — match both for compatibility.
-- MCP tools referenced as `mcp__serval__<tool>`; pre-approve reads via wildcard.
-- Custom SDK tools return `{ content: [...] }` and use `isError: true`, never throw.
-- `ANTHROPIC_API_KEY` required.
+| `SupervisorAgent` | `Supervisor` | Plan, gate, delegate (RPC), synthesize, SSE stream |
+| `TriageAgent` | `Triage` | Ticket classify/prioritize/reply (haiku) |
+| `AccessReviewAgent` | `AccessReview` | JIT access vs deterministic policy (sonnet) |
+| `OnboardingAgent` | `Onboarding` | Tickets + access + workflow (sonnet) |
+| `ServalMCP` | `ServalMCP` | Mock Serval MCP backend (McpAgent) |
 
 ---
 
-## 9. Context engineering & reliability (detail)
-
-- **Smallest high-signal token set:** the supervisor never ingests raw specialist
-  output; specialists never dump transcripts. Pass references, pull on demand.
-- **Just-in-time context:** agents load Serval data via tools at runtime (IDs/refs
-  in context, payloads fetched only when needed) rather than pre-loading.
-- **Context rot defenses:** keep each agent's window small; place critical
-  instructions at the edges (lost-in-the-middle); filter distractors before they
-  enter context.
-- **Long-horizon:** automatic compaction (summarize/clear stale tool results first)
-  + an external memory file for the orchestrator's plan.
-- **Reliability spine:** checkpoint the plan; idempotent write side-effects;
-  surface tool failures into context; wrap every output boundary in Zod
-  validate-and-reask (the SDK's `outputFormat` provides the re-prompt loop);
-  guardrail filter before parse.
-
----
-
-## 10. Observability & evaluation
-
-- **`lib/trace.ts`** emits a structured trace following **OpenTelemetry GenAI
-  semantic conventions**: one `trace_id` per user request spanning
-  `invoke_agent` (orchestrator) → `invoke_agent` (each specialist) →
-  `execute_tool` (each MCP call), with `gen_ai.request.model`,
-  `gen_ai.usage.input_tokens`/`output_tokens`, tool name/args/result, and
-  `mcp.method.name`. Subagent attribution via `parent_tool_use_id`. This same
-  stream feeds the web console.
-- **Evaluation (`tests/eval/`)**: ~6–8 end-to-end scenarios graded by **end-state**
-  (did Serval reach the correct state?) — not trajectory — with a **single-call
-  LLM-as-judge** rubric (routing correctness, completeness, no unintended writes),
-  run **offline** behind `RUN_EVALS=1` (not inline, due to latency/cost/flake).
-  Assert on **thresholds**, never exact text. At least one multi-agent fan-out
-  scenario. Humans review demo runs for edge cases evals miss.
-
----
-
-## 11. Safety & security model
-
-- **Reads** (`list_*`, `get_*`) auto-approved; **writes** require explicit CLI/web
-  confirmation via `canUseTool`.
-- Orchestrator runs in `permissionMode: "default"` (never bypass) so specialists
-  cannot inherit an over-privileged mode. Destructive patterns also in
-  `disallowedTools` (denied even under bypass).
-- **Least privilege:** each specialist gets only its tool slice (§5).
-- **Tool-definition pinning:** hash the mock's tool definitions on first load; warn
-  on drift (defense against the MCP "rug pull" / tool-redefinition threat).
-- **Untrusted annotations:** treat tool descriptions/annotations as untrusted input
-  (don't let them drive privileged behavior).
-- **Access-Review** must call the deterministic `policy/access-policy.ts` and
-  respect its verdict; the LLM does not unilaterally approve access.
-
----
-
-## 12. User contribution (learning mode)
-
-`src/policy/access-policy.ts` exposes:
-
-```ts
-export type AccessDecision = "approve" | "deny" | "escalate";
-
-export interface AccessRequestContext {
-  resource: string;         // e.g. "github", "aws-prod", "salesforce"
-  scope: string;            // e.g. "read", "admin", "write"
-  requesterActive: boolean; // is the requesting user active?
-  isProduction: boolean;    // does this touch a production system?
-  isAdmin: boolean;         // is this an admin-level grant?
-}
-
-/**
- * Decide how to handle a just-in-time access request.
- * The user implements the ~8-line policy body.
- */
-export function decideAccess(ctx: AccessRequestContext): {
-  decision: AccessDecision;
-  reason: string;
-};
-```
-
-Note: `AccessDecision` is a **union type**, not a TS `enum` — enums are
-non-erasable and would break native Node TS execution (§14). The scaffold provides
-the file, types, signature, doc comment, and a TODO. The **user writes the ~8-line
-decision body** (the genuine business logic: trade-offs between auto-approving
-low-risk reads, escalating admin/prod grants, denying inactive requesters).
-`tests/policy.test.ts` is pre-written so the user can verify immediately.
-
----
-
-## 13. Visual representation (demo web console)
-
-A single-page **visual representation of the solution**, styled after the "Conduit"
-reference (`procore-salesforce-mcp.burademirung.workers.dev`): engineering-forward,
-light-mode, flat/minimal, diagram-heavy.
-
-### Principle
-
-The web console is a **second consumer of the same orchestration core** as the CLI
-— not a separate mock. A scenario button triggers a real orchestrator run against
-the mock Serval backend; the live OTel-shaped trace (`lib/trace.ts`) streams to the
-browser via **SSE** and renders as an animated agent/tool pipeline. One engine, two
-surfaces.
-
-### Page sections (mirroring the reference)
-
-1. **Hero** — title + tagline + primary CTA ("Run a scenario").
-2. **Live demo console** — scenario buttons (Triage tickets, Review access,
-   Onboard employee, **Fan-out: onboard + review**). Clicking runs the orchestrator
-   and streams steps `Orchestrator → Specialist → mcp__serval__* tool → result`
-   with idle/running/complete badges and a log-style output pane.
-3. **Architecture diagram** — monospace/ASCII supervisor→specialists→MCP (the §4
-   diagram), labeled planes (Orchestration / Serval system of record).
-4. **Agent registry table** — the §5 table (agent · model · effort · role · scoped
-   tools) with read/write badges.
-5. **Cutting-edge stack grid** — the §3 table rendered as cards.
-6. **Best-practices grid** — the §8 matrix as cards (practice → implementation).
-7. **Mock-vs-live topology** — the `connection.ts` swap (stdio mock ⇄ remote Serval
-   MCP over HTTP+Bearer).
-8. **Status/roadmap** — live (mock, orchestration, trace) vs. pending (verified
-   live Serval connection; code-mode scaling path).
-9. **Footer** — links to spec/plan docs and Serval references.
-
-### Style & modern techniques
-
-- Background white `#ffffff`; ink `#1a1a1a`; teal/cyan accent `#06b6d4`; status
-  green `#10b981` / amber / red (reused for access verdicts: approve/escalate/deny).
-- Fonts: display **Bricolage Grotesque**, body **Hanken Grotesk**, mono **IBM Plex
-  Mono** (Google Fonts via `<link>`, `display=swap` + `preconnect`).
-- Flat `1px solid #e5e7eb` boxes, no shadows, minimal radius; emoji inline icons.
-- **Zero build step** — one static `index.html` (vanilla HTML/CSS/JS).
-- Modern Baseline-2026 CSS: **`:has()`** for state-aware styling, **container
-  queries** so the console embeds anywhere, **view transitions** for stage changes,
-  native CSS nesting. All motion gated behind **`prefers-reduced-motion`**.
-- Accessibility: streaming log is an `aria-live="polite"` `role="log"` region;
-  semantic landmarks; visible focus; WCAG-AA contrast.
-
-### Endpoints (`src/web/server.ts`, `node:http` + SSE)
-
-- `GET /` → serves `index.html`.
-- `GET /events?scenario=<id>` → SSE stream; runs the orchestrator for that scenario
-  and emits trace events (`agent_start`, `delegate`, `tool_call`, `tool_result`,
-  `synthesis`, `done`). SSE best practices: `Content-Type: text/event-stream`,
-  `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`, 25 s heartbeat,
-  `id:`/`retry:`, and `req.on('close')` cleanup.
-- Browser uses `EventSource` + `addEventListener` per event type.
-- Demo uses the mock backend, so it runs with only `ANTHROPIC_API_KEY`.
-
----
-
-## 14. Tech stack
-
-- **Runtime:** Node **v25** (installed) — runs `.ts` directly via stable type
-  stripping; **no build step, no `tsx`, no `dotenv`, no `nodemon`, no bundler**.
-  Run/dev: `node --watch --env-file=.env src/index.ts`.
-- **Language:** TypeScript 5.8+, **ESM** (`"type": "module"`), **erasable syntax
-  only** (no enums/namespaces/param-properties; explicit `.ts` import extensions;
-  `import type` for type-only imports).
-- **`tsconfig.json`:** `module`/`moduleResolution: "nodenext"`, `noEmit: true`
-  (tsc only type-checks), `verbatimModuleSyntax: true`, `erasableSyntaxOnly: true`,
-  `rewriteRelativeImportExtensions: true`, `strict: true`,
-  `noUncheckedIndexedAccess: true`.
-- **Agent framework:** `@anthropic-ai/claude-agent-sdk`.
-- **MCP server:** `@modelcontextprotocol/sdk` (pin **v1.x**; spec `2025-11-25`;
-  `server/mcp.js` + `server/stdio.js`). (v2 is alpha — not for production.)
-- **Validation:** `zod` (≥ 3.25 / v4) — `z.toJSONSchema()` for SDK `outputFormat`
-  and MCP `outputSchema`.
-- **Tests:** `vitest` v3 (`environment: 'node'`, v8 coverage); deterministic tests
-  in `*.test.ts`, LLM-judge evals in `*.eval.ts` behind `RUN_EVALS`. Business logic
-  is **DI-friendly** (model injected, not imported) for deterministic testing.
-- **Web console:** built-in `node:http` + SSE; one static `index.html`.
-- **Imports:** `node:`-prefixed built-ins; package.json **subpath imports**
-  (`#…`) instead of tsconfig `paths` (the stripper rejects path aliases).
-- **Auth:** `ANTHROPIC_API_KEY` (agent); `SERVAL_TOKEN` only for live mode.
-- **Prod deps target:** essentially just the Agent SDK + MCP SDK + Zod (everything
-  else is Node built-in or dev-only).
-
----
-
-## 15. Project structure
+## 5. Source layout
 
 ```
 serval-orchestrator/
+├── wrangler.jsonc                 # Worker config: 5 DO bindings + migrations + assets + AI Gateway vars
+├── package.json                   # deps: agents, @modelcontextprotocol/sdk, @anthropic-ai/sdk, zod
+├── tsconfig.json                  # extends "agents/tsconfig" (NO experimentalDecorators)
+├── vitest.config.ts               # @cloudflare/vitest-pool-workers
+├── .dev.vars.example              # ANTHROPIC_API_KEY, CF_ACCOUNT_ID, GATEWAY_ID, SERVAL_MODE, model IDs
+├── worker-configuration.d.ts      # generated by `wrangler types`
 ├── src/
-│   ├── mock-serval/server.ts      # stdio MCP server (2025-11-25): tools + seeds + schemas + annotations + isError
+│   ├── index.ts                   # Worker entry: routes (assets / /api/run / /mcp / /agents)
+│   ├── mcp/
+│   │   ├── serval.ts              # ServalMCP extends McpAgent — registers 12 tools
+│   │   └── seeds.ts               # in-memory seed shapes + factory
 │   ├── agents/
-│   │   ├── orchestrator.ts        # lean supervisor: contract, budgets, gate, opus/xhigh, memory, trace
-│   │   └── specialists.ts         # AgentDefinition map: triage/access/onboarding, scoped tools, outputFormat
-│   ├── config/connection.ts       # mock(stdio) ⇄ live(http+Bearer) swap via SERVAL_MODE
-│   ├── policy/access-policy.ts     # ← USER contribution: deterministic approve/deny/escalate
+│   │   ├── supervisor.ts          # SupervisorAgent: plan, gate, fan-out RPC, SSE, synthesize
+│   │   ├── triage.ts              # TriageAgent
+│   │   ├── access-review.ts       # AccessReviewAgent (uses the policy)
+│   │   ├── onboarding.ts          # OnboardingAgent
+│   │   └── base-specialist.ts     # shared: Anthropic tool-loop + scoped MCP tools + Finding
 │   ├── lib/
-│   │   ├── permissions.ts          # canUseTool human-in-loop gate (reads free, writes confirm)
-│   │   ├── trace.ts                # OTel-GenAI trace emitter + SSE event source
-│   │   └── schemas.ts              # Zod schemas (→ JSON Schema) for findings + access decision
-│   ├── web/
-│   │   ├── server.ts               # node:http + SSE: runs orchestrator, streams trace
-│   │   └── public/index.html       # visual representation (demo console + architecture)
-│   └── index.ts                    # CLI entry (chat loop)
-├── tests/
-│   ├── mock.test.ts                # tool handlers: valid/invalid/error paths, structuredContent shape
-│   ├── policy.test.ts              # pure unit tests for decideAccess (pre-written)
-│   └── eval/scenarios.eval.ts      # ~6–8 end-state LLM-judge scenarios (gated by RUN_EVALS)
-├── tsconfig.json                   # nodenext + verbatimModuleSyntax + erasableSyntaxOnly
-├── package.json                    # ESM; scripts use node --watch --env-file
-├── .env.example                    # ANTHROPIC_API_KEY, SERVAL_MODE, SERVAL_MCP_URL, SERVAL_TOKEN
-└── README.md                       # run instructions, architecture, best-practices showcase
+│   │   ├── anthropic.ts           # AI-Gateway-routed Anthropic client + tool-loop runner
+│   │   ├── mcp-tools.ts           # MCP tool list → Anthropic tools; callTool wrapper
+│   │   ├── schemas.ts             # zod: Finding, OrchestratorResult, AccessDecision
+│   │   ├── trace.ts               # OTel-GenAI-shaped trace event types + SSE encoder
+│   │   └── scenarios.ts           # named demo scenarios
+│   ├── policy/
+│   │   └── access-policy.ts       # ← USER contribution: deterministic decideAccess()
+│   └── public/
+│       └── index.html             # Conduit-style visual console (SSE client)
+└── tests/
+    ├── policy.test.ts             # pure unit tests for decideAccess (pre-written)
+    ├── mcp-tools.test.ts          # MCP→Anthropic tool conversion, callTool wrapper
+    ├── serval-mcp.test.ts         # McpAgent tools via vitest-pool-workers (Streamable HTTP)
+    └── eval/scenarios.eval.ts     # gated end-state evals (RUN_EVALS)
 ```
 
 ---
 
-## 16. Testing & verification
+## 6. Agents, models & tool scoping (least privilege)
 
-- **`tests/mock.test.ts`** — unit-test mock tool handlers (pure functions): valid
-  input, invalid input, simulated error path; assert `CallToolResult` shape,
-  `structuredContent` conformance to `outputSchema`, and `isError`.
-- **`tests/policy.test.ts`** — pure unit tests for `decideAccess` across the
-  decision matrix (low-risk read → approve; admin/prod → escalate; inactive →
-  deny). Pre-written so the user's implementation is verifiable immediately.
-- **`tests/eval/scenarios.eval.ts`** — end-to-end scenarios (gated by `RUN_EVALS`)
-  driving the orchestrator, graded by an end-state LLM-judge rubric. Includes a
-  multi-agent fan-out scenario.
-- **Type safety:** `npm run typecheck` (`tsc --noEmit`) — Node does no type
-  checking, so this is the type gate.
-- **Demo script** — a scripted multi-part request that visibly fans out and
-  synthesizes, for live demonstration (CLI + web console).
+| Agent (DO) | Model (env-configurable) | Role | Serval tools it may call |
+|---|---|---|---|
+| **Supervisor** | `claude-opus-4-8` | Plan, delegate (RPC), synthesize; streams SSE | *(none direct — delegates only)* |
+| **Triage** | `claude-haiku-4-5` | Classify/prioritize tickets, reply | `list_tickets`, `get_ticket`, `update_ticket`, `post_message` |
+| **Access-Review** | `claude-sonnet-4-6` | Evaluate JIT access vs policy | `list_access_requests`, `get_access_request`, `get_user`, `review_access_request` |
+| **Onboarding** | `claude-sonnet-4-6` | New-hire: tickets + access + workflow | `create_ticket`, `create_access_request`, `list_workflows`, `run_workflow`, `get_user` |
 
-A change is "done" only when: `npm run typecheck` is clean, `npm test` passes, the
-policy tests pass with the user's implementation, and the fan-out demo runs
-end-to-end against the mock producing a correct synthesized answer with a visible
-trace.
+- **Model IDs live in env vars** (`MODEL_SUPERVISOR`, `MODEL_SONNET`, `MODEL_HAIKU`)
+  — Cloudflare docs still referenced older IDs, so the exact 2026 strings are
+  bumpable without code changes. Defaults: opus 4.8 / sonnet 4.6 / haiku 4.5.
+- **Least privilege:** each specialist filters `this.mcp` tools down to its allowed
+  slice before passing them to Claude. A specialist literally cannot call a tool
+  outside its set.
+- **Anthropic-native knobs:** `effort` (supervisor `xhigh`, specialists `high`) and
+  adaptive thinking passed through `@anthropic-ai/sdk` where supported (feature-flag
+  guarded; degrade gracefully if the gateway/model rejects them).
 
 ---
 
-## 17. Scope decisions & deferred frontier options
+## 7. Orchestration flow
 
-Documented deliberate choices (frontier-aware, not built):
+1. Browser hits `GET /api/run?scenario=fanout` → routed to a `SupervisorAgent`
+   instance, which returns an **SSE `ReadableStream`**.
+2. Supervisor emits `run_start`, **persists its plan** to DO state, applies the
+   **simplicity gate** (1 specialist for single-domain; fan out only when the
+   request spans domains), scaling effort to complexity.
+3. For each chosen specialist, the supervisor emits `delegate` then calls it via
+   **`getAgentByName(env.Triage, id).run(taskSpec)`**. The `taskSpec` carries the
+   **4-field contract** (objective, output format, tools/sources, boundaries).
+   Multiple specialists run in **parallel** (`Promise.all`).
+4. Each **specialist DO** runs its own Anthropic tool-loop against its scoped Serval
+   MCP tools (RPC to `ServalMCP`), and returns a **distilled, Zod-validated
+   `Finding`** (summary + actions + references) — never its transcript.
+5. The supervisor streams each specialist's `actions` as `tool_call`/`tool_result`
+   trace events (reconstructed from the returned Finding), then `synthesis`.
+6. The supervisor synthesizes a final `OrchestratorResult` (optionally a final
+   Claude call) and emits `done` with the answer. Writes are **idempotent**
+   (idempotency keys), safe under Workflows/RPC retry.
 
-- **Code execution with MCP ("code mode"):** the 98.7%-token-reduction pattern
-  (present MCP tools as code APIs, agent writes code, sandbox executes). **Deferred**
-  — it requires a secure, resource-limited sandbox to run model-written code, and
-  our ~12-tool surface is exactly the "handful of tools → direct calls" case where
-  the research recommends *against* it. Documented as the **scaling path** for when
-  the tool surface grows to hundreds.
-- **Agent teams** (lead supervising peer sessions) and the **Workflow tool**
-  (script-based orchestration for dozens–hundreds of agents): noted as the next
-  primitives if the supervisor needs more specialists than one conversation holds.
-  The PoC uses plain subagents (right-sized for 3 specialists).
-- **Managed Agents** (hosted REST runtime): the production target after a SDK
-  prototype; out of scope for a local PoC.
-- **MCP `2026-07-28` RC** (stateless core, MCP Apps in-chat UI, Tasks extension)
-  and **MCP SDK v2** (package split, Standard Schema): pre-final/alpha in June 2026
-  — tracked for migration, not adopted.
-- **Elicitation / sampling** (MCP `2025-11-25`): not needed for the PoC flows.
+**Worked example** — `GET /api/run?scenario=fanout` →
+"Onboard Jane Doe and review her pending access requests." → supervisor fans out to
+**Onboarding** + **Access-Review** in parallel, streams both pipelines, merges into
+one attributed answer.
+
+**Live-trace fidelity note:** intra-specialist tool calls are surfaced after each
+specialist returns (reconstructed from `Finding.actions`). A future upgrade (a
+shared `TraceHub` Durable Object or WebSocket relay) would stream them in real time;
+deferred for the PoC (§14).
 
 ---
 
-## 18. Open risks / caveats
+## 8. Serval MCP backend (`ServalMCP` McpAgent)
 
-- **Token cost:** multi-agent runs use ~15× the tokens of a single chat; mitigated
-  by mixed-tier models, effort/turn budgets, the simplicity gate, `maxBudgetUsd`,
-  compaction, and tool-search-off. Live demos stay scenario-scoped.
-- **Supervisor fidelity:** the supervisor can distort specialist output ("telephone
-  game"); mitigated by verbatim forwarding where it matters.
-- **SDK/spec churn:** the Agent SDK + MCP spec evolve quickly (recent `Task`→`Agent`
-  rename, MCP `2025-11-25`, upcoming v2/RC); pin versions and follow §8 notes.
-- **Native TS footguns:** non-erasable syntax (enums/param-properties/namespaces)
-  crashes native Node run — `erasableSyntaxOnly` turns these into compile errors;
-  `verbatimModuleSyntax` prevents silently dropped runtime imports.
-- **Live mode unverified:** real Serval MCP connection cannot be tested without a
-  workspace; the swap is built to spec but verified only against the mock.
-- **LLM-judge bias:** position/length/surface-cue biases — mitigated by rubric
-  scoring, randomized order, and threshold (not exact-match) assertions.
+- Extends `McpAgent`; `server = new McpServer({name:"serval",version})`; registers
+  **12 tools** in `init()` via `server.registerTool(name, {description, inputSchema,
+  outputSchema, annotations}, handler)`.
+- **MCP spec 2025-11-25:** handlers return `content` (JSON text, back-compat) **and**
+  `structuredContent` (validated against `outputSchema`); business/validation errors
+  as `{ isError: true }` (not thrown); **annotations** (`readOnlyHint` on reads;
+  `destructiveHint`/`idempotentHint` on writes); resource links for any large payload.
+- **Seeds** in DO state (tickets incl. a sentinel error id, users incl. one inactive,
+  access requests incl. one admin/prod-scoped, one onboarding workflow). Writes
+  mutate DO state and are idempotent by `idempotencyKey`.
+- **Exposure:** `ServalMCP.serve("/mcp")` for public Streamable HTTP (Inspector /
+  Claude Desktop / Anthropic connector); **and** reachable internally by specialists
+  via the **v0.6.0 RPC transport** (`addMcpServer("serval", env.ServalMCP)`) — no
+  public hop, lowest latency.
+- **Authless** (mock). Real Serval uses Bearer (handled in the connection swap).
+
+### Real-ready swap
+
+A specialist connects its MCP client by env:
+- `SERVAL_MODE=mock` (default): `addMcpServer("serval", env.ServalMCP)` (RPC binding).
+- `SERVAL_MODE=live`: `addMcpServer("serval", env.SERVAL_MCP_URL, { transport: { headers: { Authorization: "Bearer " + env.SERVAL_TOKEN } } })`.
+Tool names/shapes are identical, so specialist logic is unchanged.
+
+---
+
+## 9. Best practices implemented (carried over + Cloudflare-mapped)
+
+All 40 from v2 still apply; the platform-specific mapping:
+
+**Orchestration & context engineering**
+- Orchestrator-workers via **DO RPC fan-out**; 4-field delegation contract in the
+  `taskSpec`; simplicity gate + effort scaling in the supervisor prompt at the right
+  altitude; **context isolation enforced by separate DOs** (specialists return
+  distilled Findings, not transcripts); lean supervisor holds references only;
+  context-rot defenses (critical instructions at prompt edges, distractor filtering).
+
+**Tools / MCP**
+- Faithful mock; `outputSchema` + `structuredContent`; `readOnly`/`destructive`
+  annotations; `isError` not throw; resource links; curated non-overlapping
+  per-specialist tool slices.
+
+**Safety / security**
+- **Deterministic access policy** (`decideAccess`) is the real safety boundary —
+  Access-Review must defer to it. Least-privilege tool scoping. Idempotent writes.
+  Mock is authless by design; real Serval Bearer kept in a Worker **secret**.
+  Tool-definition awareness (annotations treated as untrusted hints).
+- **Write guarding:** writes are flagged + traced; `REQUIRE_WRITE_APPROVAL` env can
+  pause for human approval via DO state + a `/api/approve` endpoint (auto-approve in
+  the demo). (HITL-on-Workers replacement for the v2 stdin gate.)
+
+**Structured output, observability, eval, model controls**
+- Findings + final result validated with **Zod**; supervisor synthesis uses a
+  structured result schema. **OTel-GenAI-shaped trace** (one `trace_id` per run;
+  `invoke_agent`/`execute_tool`/`mcp` events) streamed over SSE and visible in
+  **AI Gateway** analytics. End-state evals (gated). **AI Gateway** provides
+  caching, retries, cost tracking, and mid-inference reconnect. Per-agent model
+  tiers; `effort`/adaptive thinking where supported; env-bumpable model IDs.
+
+**Cloudflare-native correctness (must-follow)**
+- `compatibility_flags: ["nodejs_compat"]`; all agent/McpAgent classes in
+  **`new_sqlite_classes`** migrations (new tag for new classes; never edit old tags);
+  do **not** enable `experimentalDecorators` (breaks `@callable`) — extend
+  `agents/tsconfig`; access secrets via `this.env`, never `process.env`; run
+  `wrangler types` after editing `wrangler.jsonc`.
+
+---
+
+## 10. The Anthropic tool-loop (per specialist)
+
+`src/lib/anthropic.ts` + `src/lib/mcp-tools.ts` provide a reusable runner used by
+`base-specialist.ts`:
+
+1. Build the Anthropic client: `new Anthropic({ apiKey: env.ANTHROPIC_API_KEY,
+   baseURL: \`https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/${env.GATEWAY_ID}/anthropic\` })`.
+2. Convert the specialist's **scoped** MCP tools (from `this.mcp.listTools()`,
+   filtered to its allowlist) → Anthropic `tools` (`name`, `description`,
+   `input_schema` from the MCP `inputSchema`).
+3. Loop: `messages.create({ model, max_tokens, tools, messages, ...effort })`.
+   While `stop_reason === "tool_use"`: for each `tool_use` block, call
+   `this.mcp.callTool(...)`, append a `tool_result` (carry `isError` through),
+   record an action for the Finding, repeat. Cap iterations (`maxSteps`) as the
+   stopping condition.
+4. Parse the final assistant message's fenced JSON into a `Finding` (Zod-validate;
+   on failure, one re-ask). Return the `Finding`.
+
+> SDK-shape note: `this.mcp` method names (`listTools`/`callTool`/`getAITools`) and
+> the `@anthropic-ai/sdk` tool-loop fields follow June-2026 research; verify against
+> the installed `agents` + `@anthropic-ai/sdk` versions and adjust in these two files
+> only — the rest of the system is insulated.
+
+---
+
+## 11. User contribution (learning mode)
+
+`src/policy/access-policy.ts` — unchanged from v2: a pure `decideAccess(ctx)` →
+`{ decision: "approve"|"deny"|"escalate", reason }` (union type, not a TS enum). The
+scaffold ships the file, types, doc comment, TODO, and a pre-written
+`tests/policy.test.ts`. The **user writes the ~8-line body**. The Access-Review agent
+calls this function and must respect its verdict (LLM does not self-approve).
+
+---
+
+## 12. Visual representation (Conduit-style console)
+
+Single static `src/public/index.html`, served by **Workers Static Assets**
+(`assets` binding, SPA fallback). It is a **second consumer of the same supervisor**:
+a scenario button opens an `EventSource` to `GET /api/run?scenario=…`; the supervisor
+streams the live trace; the page renders an animated agent/tool pipeline + log.
+
+Sections (per the reference): hero · live demo console (scenario buttons:
+Triage / Review access / Onboard / **Fan-out**) · ASCII architecture diagram · agent
+registry table · cutting-edge stack grid · best-practices grid · **mock-vs-live +
+Cloudflare topology** (Worker, DOs, McpAgent, AI Gateway) · status/roadmap · footer.
+
+Style: white/charcoal/teal; **Bricolage Grotesque / Hanken Grotesk / IBM Plex Mono**
+(Google Fonts via `<link>`); flat bordered, no shadows; **`:has()` / container
+queries / view transitions**; `prefers-reduced-motion`; `aria-live` log. Zero build
+for the page (vanilla HTML/CSS/JS).
+
+SSE event names: `run_start`, `delegate`, `tool_call`, `tool_result`, `synthesis`,
+`done`, `error` — emitted from the supervisor's `ReadableStream`.
+
+---
+
+## 13. Tech stack
+
+- **Platform:** Cloudflare Workers + **Durable Objects** + **Static Assets**;
+  `wrangler` (local `wrangler dev` on workerd; deploy `wrangler deploy`).
+- **Agents:** `agents` (Cloudflare Agents SDK) — `Agent`, `McpAgent`,
+  `routeAgentRequest`, `getAgentByName`, `this.mcp` MCP client.
+- **MCP server:** `@modelcontextprotocol/sdk` v1.x (via `agents/mcp`), spec 2025-11-25.
+- **LLM:** `@anthropic-ai/sdk` (fetch-based) routed through **AI Gateway**.
+- **Validation:** `zod`.
+- **Language:** TypeScript, ESM; `tsconfig` extends `agents/tsconfig` (no
+  `experimentalDecorators`). Bundled by wrangler/esbuild (no native-TS constraint).
+- **Tests:** `@cloudflare/vitest-pool-workers` (DO-aware integration) + plain
+  `vitest` for pure functions; evals gated by `RUN_EVALS`.
+- **Secrets/vars:** `.dev.vars` locally; `wrangler secret put ANTHROPIC_API_KEY`
+  (and `SERVAL_TOKEN` for live) in prod. `wrangler types` for `Env`.
+- **Config:** `wrangler.jsonc` — `compatibility_flags: ["nodejs_compat"]`, 5 DO
+  bindings, one migration (`new_sqlite_classes`), `assets`, `observability`,
+  AI-Gateway env (`CF_ACCOUNT_ID`, `GATEWAY_ID`), model-ID env vars.
+
+---
+
+## 14. Scope decisions & deferred frontier options
+
+- **Code execution with MCP ("code mode")** — deferred (needs a sandbox; ~12 tools is
+  the "direct calls" case). On Cloudflare the sandbox would be the **Sandbox SDK /
+  Containers**; documented scaling path.
+- **Cloudflare Workflows / `AgentWorkflow`** — durable, retry/resume orchestration
+  (wrap each specialist call in `step.do()`). Deferred; the PoC uses Supervisor→
+  specialist RPC fan-out (right-sized). Documented as the durability upgrade.
+- **Real-time intra-specialist trace** — a shared `TraceHub` DO / WebSocket relay to
+  stream tool calls live (vs. reconstructed-from-Finding). Deferred (§7).
+- **Human-write-approval endpoint** — `REQUIRE_WRITE_APPROVAL` + `/api/approve`
+  pause/resume via DO state. Designed; demo auto-approves.
+- **OAuth on the mock** — `@cloudflare/workers-oauth-provider` (authless for now).
+- **MCP `2026-07-28` RC / SDK v2** — tracked, not adopted (pre-final/alpha).
+
+---
+
+## 15. Open risks / caveats
+
+- **Token cost:** multi-agent ≈ 15× a single chat; mitigated by tiered models,
+  effort/step caps, the simplicity gate, **AI Gateway caching**, and tool scoping.
+- **SDK churn:** `agents`, `@anthropic-ai/sdk`, and the MCP spec evolve fast; pin
+  versions; insulate SDK-shape assumptions to `lib/anthropic.ts` + `lib/mcp-tools.ts`.
+- **Model IDs:** keep in env vars; verify exact 2026 strings at deploy.
+- **DO migration discipline:** agent classes must be `new_sqlite_classes`; adding
+  classes later needs a new migration tag.
+- **Live mode unverified:** real Serval MCP can't be tested without a workspace; the
+  swap is built to spec, verified only against the mock.
+- **Live-trace fidelity:** intra-specialist calls are reconstructed post-return, not
+  streamed live (deferred upgrade).
+- **Supervisor fidelity ("telephone game"):** mitigated by forwarding specialist
+  Finding summaries verbatim where it matters.
 </content>
