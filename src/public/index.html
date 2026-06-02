@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Serval Multi-Agent IT Orchestrator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#fff;--line:#e5e7eb;--ink:#1a1a1a;--muted:#6b7280;--accent:#06b6d4;--ok:#10b981;--err:#c0392b;
+    --display:'Bricolage Grotesque',system-ui,sans-serif;--body:'Hanken Grotesk',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;--radius:10px}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.5}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+  h1,h2{font-family:var(--display);letter-spacing:-.02em;margin:0 0 8px}
+  header{padding:64px 0 32px;border-bottom:1px solid var(--line)}
+  header p{color:var(--muted);max-width:62ch;font-size:18px}
+  section{padding:40px 0;border-bottom:1px solid var(--line)}
+  .accent{color:var(--accent)}
+  .btn{font:inherit;font-size:15px;border:1px solid var(--line);background:#fff;padding:10px 16px;border-radius:var(--radius);cursor:pointer}
+  .btn:hover{border-color:var(--accent)}
+  .scenarios{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+  .console{container-type:inline-size;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .console-head{display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);background:#fafafa}
+  .status{font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .console:has(.row[data-state="running"]) .status{color:var(--accent)}
+  .log{font-family:var(--mono);font-size:13px;max-height:380px;overflow:auto;padding:12px 16px;margin:0}
+  .log:not(:has(.row))::after{content:"Pick a scenario to run the orchestrator…";color:var(--muted)}
+  .row{padding:2px 0;white-space:pre-wrap;animation:slide 160ms ease-out}
+  .row[data-level="delegate"]{color:var(--accent)} .row[data-level="tool_result"]{color:var(--muted)}
+  .row[data-level="done"]{color:var(--ok);font-weight:600} .row[data-level="error"]{color:var(--err);font-weight:600}
+  @keyframes slide{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+  pre.diagram{font-family:var(--mono);font-size:12.5px;background:#fafafa;border:1px solid var(--line);border-radius:var(--radius);padding:16px;overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)} th{font-family:var(--mono);font-weight:500;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+  .card h3{font-family:var(--mono);font-size:13px;margin:0 0 6px;color:var(--accent)}
+  footer{padding:32px 0;color:var(--muted);font-size:14px}
+  @container (max-width:520px){.console-head{flex-direction:column;gap:4px}}
+  @media (prefers-reduced-motion:reduce){.row{animation:none}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>Serval <span class="accent">Multi-Agent</span> IT Orchestrator</h1>
+  <p>A supervisor Durable Object routes IT work to scoped specialist agents that operate Serval over MCP — all on Cloudflare. Run a scenario to watch the orchestration stream live.</p>
+</div></header>
+
+<section><div class="wrap">
+  <h2>Live demo console</h2>
+  <div class="scenarios">
+    <button class="btn" data-s="triage">Triage tickets</button>
+    <button class="btn" data-s="access">Review access</button>
+    <button class="btn" data-s="onboard">Onboard employee</button>
+    <button class="btn" data-s="fanout">Fan-out: onboard + review</button>
+  </div>
+  <div class="console">
+    <div class="console-head"><strong>orchestration trace</strong><span class="status" id="status">idle</span></div>
+    <div class="log" id="log" role="log" aria-live="polite"></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Architecture (Cloudflare)</h2>
+  <pre class="diagram">  Static Assets (this page) ──SSE──► browser
+        │ /api/run?scenario=…
+        ▼
+  SupervisorAgent (Durable Object, opus-4-8)
+        │ getAgentByName() RPC · Promise.all fan-out
+   ┌────┴──────┬───────────────┐
+   ▼           ▼               ▼
+ Triage    AccessReview    Onboarding   (Durable Objects, scoped tools)
+ haiku       sonnet          sonnet      each runs its own Claude tool-loop
+   └───────────┴───────────────┘  this.mcp (RPC)
+               ▼
+        ServalMCP (McpAgent DO)  — mock /mcp  ⇄  live Serval (Bearer)
+        Claude via @anthropic-ai/sdk → Cloudflare AI Gateway</pre>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Agent registry</h2>
+  <table>
+    <thead><tr><th>Agent (DO)</th><th>Model</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>Supervisor</td><td>claude-opus-4-8</td><td>plan · delegate (RPC) · synthesize</td></tr>
+      <tr><td>Triage</td><td>claude-haiku-4-5</td><td>classify · prioritize · reply</td></tr>
+      <tr><td>Access-Review</td><td>claude-sonnet-4-6</td><td>evaluate JIT access vs policy</td></tr>
+      <tr><td>Onboarding</td><td>claude-sonnet-4-6</td><td>tickets · access · workflow</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Cutting-edge stack</h2>
+  <div class="grid">
+    <div class="card"><h3>Cloudflare Agents</h3>Supervisor + specialists as Durable Objects; RPC fan-out.</div>
+    <div class="card"><h3>McpAgent</h3>Serval mock as a remote Streamable-HTTP MCP server.</div>
+    <div class="card"><h3>AI Gateway</h3>Claude via @anthropic-ai/sdk — caching, retries, observability.</div>
+    <div class="card"><h3>MCP 2025-11-25</h3>outputSchema + structuredContent, annotations, isError.</div>
+    <div class="card"><h3>Context isolation</h3>Each specialist its own DO + scoped tools.</div>
+    <div class="card"><h3>Edge SSE</h3>ReadableStream trace, no duration limit.</div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">Mock backend · deploys on Cloudflare (wrangler deploy) · real Serval one env var away.</div></footer>
+
+<script type="module">
+  const log = document.getElementById("log"), status = document.getElementById("status");
+  let es = null;
+  const add = (level, text) => {
+    const row = document.createElement("div");
+    row.className = "row"; row.dataset.level = level;
+    row.dataset.state = (level === "done" || level === "error") ? "done" : "running";
+    row.textContent = text;
+    const render = () => { log.appendChild(row); log.scrollTop = log.scrollHeight; };
+    document.startViewTransition ? document.startViewTransition(render) : render();
+  };
+  function run(s){
+    if (es) es.close();
+    log.replaceChildren(); status.textContent = "running " + s + "…";
+    es = new EventSource("/api/run?scenario=" + encodeURIComponent(s));
+    const on = (e, f) => es.addEventListener(e, (ev) => f(JSON.parse(ev.data)));
+    on("run_start", d => add("delegate", "▶ " + d.detail));
+    on("delegate", d => add("delegate", "  → delegate to " + d.agent));
+    on("tool_call", d => add("tool_call", "    · " + d.tool + " (" + d.agent + ")" + (d.detail ? " " + d.detail : "")));
+    on("tool_result", d => add("tool_result", "    · " + (d.agent||"") + " " + (d.detail||"")));
+    on("synthesis", () => add("tool_result", "  ∑ synthesizing findings"));
+    on("done", d => { add("done", "✓ done"); if (d.data?.answer) add("done", "\n" + d.data.answer); status.textContent = "complete"; es.close(); });
+    on("error", d => { add("error", "✗ " + (d.detail||"error")); status.textContent = "error"; es.close(); });
+  }
+  for (const b of document.querySelectorAll(".btn[data-s]")) b.addEventListener("click", () => run(b.dataset.s));
+</script>
+</body>
+</html>
