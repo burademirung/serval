@@ -1,0 +1,26 @@
+{
+  "name": "serval-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types",
+    "test": "vitest run",
+    "eval": "RUN_EVALS=1 vitest run tests/eval"
+  },
+  "dependencies": {
+    "agents": "^0.6.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@anthropic-ai/sdk": "^0.40.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4",
+    "@cloudflare/vitest-pool-workers": "^0.8",
+    "typescript": "^5.8.0",
+    "vitest": "^3"
+  }
+}

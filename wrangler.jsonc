@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "serval-orchestrator",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "src/public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "Supervisor", "class_name": "SupervisorAgent" },
+      { "name": "Triage", "class_name": "TriageAgent" },
+      { "name": "AccessReview", "class_name": "AccessReviewAgent" },
+      { "name": "Onboarding", "class_name": "OnboardingAgent" },
+      { "name": "ServalMCP", "class_name": "ServalMCP" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SupervisorAgent", "TriageAgent", "AccessReviewAgent", "OnboardingAgent", "ServalMCP"] }
+  ],
+  "vars": {
+    "SERVAL_MODE": "mock",
+    "MODEL_SUPERVISOR": "claude-opus-4-8",
+    "MODEL_SONNET": "claude-sonnet-4-6",
+    "MODEL_HAIKU": "claude-haiku-4-5"
+  },
+  "observability": { "enabled": true }
+}

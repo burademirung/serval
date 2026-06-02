@@ -1,0 +1,10 @@
+# Anthropic (required)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Cloudflare AI Gateway (route Anthropic through it)
+CF_ACCOUNT_ID=your_account_id
+GATEWAY_ID=serval-orchestrator
+
+# Live Serval (only when SERVAL_MODE=live; set via wrangler secret in prod)
+SERVAL_MCP_URL=https://public.api.serval.com/mcp/
+SERVAL_TOKEN=
