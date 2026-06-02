@@ -290,6 +290,7 @@
   <div class="navlinks">
     <a href="#demo">Live console</a>
     <a href="#architecture">Architecture</a>
+    <a href="/deployment">Deployment</a>
     <a href="#practices">Best practices</a>
     <a href="#safety">Safety</a>
     <a href="#build">How it's built</a>
@@ -379,7 +380,12 @@
     <div class="d-row"><div class="node mcp" style="min-width:300px"><div class="t">ServalMCP · McpAgent</div><div class="d">12 tools over Streamable HTTP /mcp · stateful seeds · mock now ⇄ live Serval by env</div></div></div>
   </div>
 
-  <div class="grid g3 reveal" style="margin-top:22px">
+  <div class="reveal" style="margin-top:22px">
+    <a class="btn-primary" href="/deployment" style="text-decoration:none;display:inline-block">View the full deployment diagram →</a>
+    <span class="mono" style="color:var(--muted);font-size:13px;margin-left:14px">Worker · 5 Durable Objects · Claude via AI Gateway</span>
+  </div>
+
+  <div class="grid g3 reveal" style="margin-top:30px">
     <div class="card"><div class="ic">Engagement</div><h3>System of engagement</h3><p>A Worker routes <span class="mono">/api/run</span> to a Supervisor Durable Object that streams the run back as SSE. Static assets serve this page from the edge.</p></div>
     <div class="card"><div class="ic">Reasoning</div><h3>Tiered models</h3><p>Opus 4.8 supervises and synthesizes; Sonnet 4.6 and Haiku 4.5 do the specialist work. Strong where it matters, cheap on the leaves.</p></div>
     <div class="card"><div class="ic">Record</div><h3>System of record</h3><p>The mock Serval backend is a real remote MCP server — point MCP Inspector or Claude Desktop at <span class="mono">/mcp</span> and call its 12 tools directly.</p></div>
