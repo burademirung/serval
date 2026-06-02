@@ -21,9 +21,23 @@ describe("mock serval operations", () => {
     expect(a.data.id).toBe(b.data.id);
     expect(s.tickets.length).toBe(4);
   });
-  it("review updates status", () => {
+  it("review records an agent decision that policy permits (deny)", () => {
+    const r = operations.review_access_request(createStore(), { id: "ACC-1", decision: "deny" }) as { data: any };
+    expect(r.data.status).toBe("denied");
+    expect(r.data.enforced).toBeUndefined();
+  });
+  it("enforces policy: agent approve of non-read access is downgraded to escalate", () => {
+    // ACC-1 is github WRITE for active USR-1 → policy says escalate (non-read).
     const r = operations.review_access_request(createStore(), { id: "ACC-1", decision: "approve" }) as { data: any };
-    expect(r.data.status).toBe("approved");
+    expect(r.data.status).toBe("escalated");
+    expect(r.data.enforced).toBe(true);
+    expect(r.data.policyDecision).toBe("escalate");
+  });
+  it("enforces policy: agent approve of admin/prod access is downgraded to escalate", () => {
+    // ACC-2 is aws-prod ADMIN for active USR-1 → policy says escalate.
+    const r = operations.review_access_request(createStore(), { id: "ACC-2", decision: "approve" }) as { data: any };
+    expect(r.data.status).toBe("escalated");
+    expect(r.data.enforced).toBe(true);
   });
 });
 

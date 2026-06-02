@@ -2,16 +2,45 @@ import { Agent, getAgentByName } from "agents";
 import { sse } from "../lib/trace";
 import type { TraceEvent } from "../lib/trace";
 import type { Finding, OrchestratorResult } from "../lib/schemas";
+import { makeAnthropic } from "../lib/anthropic";
 
 const SUPERVISOR_SYSTEM = `You are the Orchestrator for an IT operations team. You coordinate specialist
 subagents (triage, access-review, onboarding); you do not call Serval tools yourself.
 Apply a simplicity gate: delegate to ONE specialist for a single-domain request; fan out only
 when the request genuinely spans domains. Synthesize specialist findings into one clear answer.`;
 
-// Ensure SUPERVISOR_SYSTEM is referenced to avoid unused-variable lint noise.
-void SUPERVISOR_SYSTEM;
-
 type Spec = "triage" | "access-review" | "onboarding";
+
+/** Synthesize specialist findings into a final answer using the supervisor model
+ *  (claude-opus-4-8). Falls back to a deterministic merge if the model call fails
+ *  (e.g. no API key), so the pipeline degrades gracefully. */
+async function synthesize(env: Env, prompt: string, findings: Finding[]): Promise<string> {
+  const merge = () => findings.map((f) => `• ${f.summary}`).join("\n");
+  try {
+    const client = makeAnthropic(env);
+    const res = await client.messages.create({
+      model: env.MODEL_SUPERVISOR,
+      max_tokens: 700,
+      system: SUPERVISOR_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content:
+            `Original request: "${prompt}"\n\nSpecialist findings:\n` +
+            findings.map((f) => `[${f.agent}] ${f.summary}`).join("\n") +
+            `\n\nSynthesize one clear, concise answer for the user.`,
+        },
+      ],
+    });
+    const text = res.content
+      .map((b) => (b.type === "text" ? b.text : ""))
+      .join("\n")
+      .trim();
+    return text || merge();
+  } catch {
+    return merge();
+  }
+}
 
 interface SupervisorState {
   plan?: { prompt: string; specialists: Spec[] };
@@ -61,7 +90,7 @@ export class SupervisorAgent extends Agent<Env, SupervisorState> {
               // getAgentByName returns DurableObjectStub which exposes run() via RPC.
               // Cast to any because the untyped namespace stub doesn't carry .run() in TS types.
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const stub: any = await getAgentByName(stubs[s]!, `${s}-${prompt.length}`);
+              const stub: any = await getAgentByName(stubs[s]!, `${s}-${crypto.randomUUID()}`);
               const finding = (await stub.run(taskSpec(s))) as Finding;
               for (const a of finding.actions)
                 emit({ name: "tool_call", agent: s, tool: a.tool, detail: a.target });
@@ -72,7 +101,7 @@ export class SupervisorAgent extends Agent<Env, SupervisorState> {
 
           emit({ name: "synthesis" });
           const result: OrchestratorResult = {
-            answer: findings.map((f) => `• ${f.summary}`).join("\n"),
+            answer: await synthesize(env, prompt, findings),
             specialistsUsed: specialists,
             findings,
           };

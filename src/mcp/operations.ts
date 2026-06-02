@@ -1,7 +1,12 @@
 import type { Store, Ticket, AccessRequest } from "./seeds";
 import { ERROR_TICKET_ID } from "./seeds";
+import { decideAccess } from "../policy/access-policy";
 
 export type OpResult = { data: unknown } | { error: string };
+
+// Permissiveness ordering: an agent may be MORE restrictive than policy, never less.
+const RANK = { deny: 0, escalate: 1, approve: 2 } as const;
+const STATUS = { approve: "approved", deny: "denied", escalate: "escalated" } as const;
 const ok = (data: unknown): OpResult => ({ data });
 const no = (error: string): OpResult => ({ error });
 
@@ -33,8 +38,21 @@ export const operations = {
   review_access_request: (s: Store, a: { id: string; decision: "approve" | "deny" | "escalate" }): OpResult => {
     const r = s.accessRequests.find((x) => x.id === a.id);
     if (!r) return no(`Access request ${a.id} not found`);
-    r.status = ({ approve: "approved", deny: "denied", escalate: "escalated" } as const)[a.decision] as AccessRequest["status"];
-    return ok(r);
+    // Deterministic policy is the safety boundary: the recorded decision can never
+    // be more permissive than decideAccess() allows. If the agent tries, the
+    // policy verdict is enforced and the override is reported back to the agent.
+    const user = s.users.find((u) => u.id === r.userId);
+    const verdict = decideAccess({
+      resource: r.resource,
+      scope: r.scope,
+      requesterActive: user?.active ?? false,
+      isProduction: r.isProduction,
+      isAdmin: r.scope === "admin",
+    });
+    const enforced = RANK[a.decision] > RANK[verdict.decision];
+    const final = enforced ? verdict.decision : a.decision;
+    r.status = STATUS[final] as AccessRequest["status"];
+    return ok(enforced ? { ...r, enforced: true, policyDecision: verdict.decision, policyReason: verdict.reason } : r);
   },
   create_access_request: (s: Store, a: { userId: string; resource: string; scope: "read" | "write" | "admin"; isProduction?: boolean; idempotencyKey?: string }): OpResult => {
     const k = a.idempotencyKey && "acc:" + a.idempotencyKey;

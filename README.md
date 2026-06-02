@@ -31,6 +31,12 @@ npx wrangler deploy
 ## Architecture
 Supervisor (Claude Opus 4.8) → specialist Durable Objects via `getAgentByName()` RPC, parallel fan-out. Each specialist is scoped to a slice of Serval MCP tools and returns a distilled, schema-validated Finding. The live trace streams to the console over SSE. The mock Serval backend is an `McpAgent` exposing 12 tools (Streamable HTTP at `/mcp`, plus the v0.6.0 RPC transport used internally). See `docs/superpowers/` for the full design and plan.
 
+### Note on inspecting state
+The public `/mcp` endpoint and the specialists' internal RPC transport resolve
+*different* `ServalMCP` Durable Object instances, so the mock state you see via the
+MCP Inspector at `/mcp` will not reflect mutations made during an orchestration run
+(those happen on the RPC-side instance). This is expected with the Agents SDK.
+
 ## Real Serval
 Set `SERVAL_MODE=live`, `SERVAL_MCP_URL`, `SERVAL_TOKEN` (workspace credentials). The specialists' MCP client targets real Serval instead of the mock binding; tool names/shapes are identical, so no agent code changes.
 
